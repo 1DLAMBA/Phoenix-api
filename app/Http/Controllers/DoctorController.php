@@ -27,7 +27,8 @@ class DoctorController extends Controller
             $doctor->save();
             
             return response()->json([
-                'Success'=> 'Registered as a doctor'
+                'Success'=> 'Registered as a doctor',
+                'user'=> $doctor
             ]);
         }
     }

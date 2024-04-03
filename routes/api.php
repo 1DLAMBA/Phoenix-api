@@ -50,13 +50,13 @@ Route::post('/assignment/create', [AssignmentsController::class, 'create']);
 Route::get('/assignment/get/{id}', [AssignmentsController::class, 'show']);
 
 // *****CLIENT*****
-Route::post('/client/register', [ClientController::class, 'create']);
+Route::post('/client/create', [ClientController::class, 'create']);
 
 // *****DOCTOR*****
-Route::post('/doctor/register', [DoctorController::class, 'create']);
+Route::post('/doctor/create', [DoctorController::class, 'create']);
 
 // *****NURSE*****
-Route::post('/nurse/register', [NurseController::class, 'create']);
+Route::post('/nurse/create', [NurseController::class, 'create']);
 
 // *****MEDICALRECORD*****
 Route::post('/medical/create', [MedicalRecordController::class, 'store']);

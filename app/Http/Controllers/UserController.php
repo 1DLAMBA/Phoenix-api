@@ -38,7 +38,8 @@ class UserController extends Controller
         $user->save();
         // Save the user to the database
         return response()->json([
-            'success'=> 'Registered!'
+            'success'=> 'Registered!',
+            'user'=> $user
 
         ]);
        } 
@@ -64,9 +65,8 @@ class UserController extends Controller
             ]);
         }
 
-        return response()->json([
-            'error', 'Invalid Credentials'
-        ]);
+        return response($body = 'invalid credentials', $status=400 , $headers = ['error'] );
+
     }
 
     /**
