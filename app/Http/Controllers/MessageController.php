@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\MessageSent;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class MessageController extends Controller
@@ -50,10 +51,10 @@ class MessageController extends Controller
             
         }
 
-
+        $sender = User::findOrFail($request->sender_id);
         // Optionally, you can broadcast the message in real time
-        event(new MessageSent($message));
-
+        
+        event(new MessageSent($message, $sender));
         return response()->json(['message' => 'Message sent successfully', 'data' => $message], 201);
     }
 

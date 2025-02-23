@@ -13,6 +13,7 @@ class Conversation extends Model
         'user_one_id',
         'user_two_id',
         'last_message',
+        'is_opened',
     ];
 
     // Relationship to the first user in the conversation

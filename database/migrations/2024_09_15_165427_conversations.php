@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('user_one_id')->constrained('users');
             $table->foreignId('user_two_id')->constrained('users');
             $table->string('last_message' )->nullable();
+            $table->boolean('is_opened' )->nullable()->default(1);
 
            $table->timestamps();
         });
