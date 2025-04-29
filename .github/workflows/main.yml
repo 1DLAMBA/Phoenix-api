@@ -1,0 +1,30 @@
+name: laravel-deployment
+
+on:
+  push:
+    branches:
+       [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Create ZIP deployment package
+      run: zip -r deploy.zip ./
+
+    - name: Deploy to Elastic Beanstalk
+      uses: einaregilsson/beanstalk-deploy@v18
+      with:
+        aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        application_name: "phoenix-backend"
+        environment_name: "phoenix-backend-env"
+        region: "us-east-2"
+        existing_bucket: "phoenix-backend-deployment"
+        version_label: "v${{ github.sha }}"
+        deployment_package: "deploy.zip"
+        

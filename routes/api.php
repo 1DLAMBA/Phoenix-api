@@ -62,6 +62,8 @@ Route::post('/assignment/create', [AssignmentsController::class, 'create']);
 Route::post('/assignment/statusedit/{id}', [AssignmentsController::class, 'edit']);
 Route::get('/assignment/get/{id}', [AssignmentsController::class, 'index']);
 Route::get('/assignment/getSingle/{id}', [AssignmentsController::class, 'show']);
+Route::get('/assignment/delete/{id}', [AssignmentsController::class, 'delete']);
+
 
 // *****CLIENT*****
 Route::post('/client/create', [ClientController::class, 'create']);

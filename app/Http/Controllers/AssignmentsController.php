@@ -93,4 +93,11 @@ class AssignmentsController extends Controller
     {
         //
     }
+    public function delete($id)
+    {
+        $delete = Assignments::where('id', $id)->delete();
+        return response()->json([
+            'message' => 'Appointments deleted successfully.',
+        ]);
+    }
 }
