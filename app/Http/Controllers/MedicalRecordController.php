@@ -17,6 +17,7 @@ class MedicalRecordController extends Controller
     public function index()
     {
         //
+        
     }
 
     /**
@@ -77,5 +78,22 @@ class MedicalRecordController extends Controller
     public function destroy(MedicalRecord $medicalRecord)
     {
         //
+    }
+    public function getDocRecord($doc_id)
+    {
+        //
+        $docMedRec = MedicalRecord::Where('assigned_doctor_id', $doc_id)->with('doctor.user')->get();
+        return response()->json([
+            'record' => $docMedRec
+                    ]);
+    }
+    
+    public function getClientRecord($client_id)
+    {
+        //
+        $clientMedRec = MedicalRecord::Where('client_id', $client_id)->with('doctor.user')->get();
+        return response()->json([
+            'record' => $clientMedRec
+                    ]);
     }
 }

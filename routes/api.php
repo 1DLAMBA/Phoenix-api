@@ -7,6 +7,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\GroqController;
 use App\Http\Controllers\MedicalRecordController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NurseController;
@@ -85,6 +86,8 @@ Route::get('/nurse/get/{id}', [NurseController::class, 'show']);
 // *****MEDICALRECORD*****
 Route::post('/medical/create', [MedicalRecordController::class, 'store']);
 Route::get('/medical/get/{id}', [MedicalRecordController::class, 'show']);
+Route::get('/medical/getDocRec/{doc_id}', [MedicalRecordController::class, 'getDocRecord']);
+Route::get('/medical/getCliRec/{client_id}', [MedicalRecordController::class, 'getClientRecord']);
 
 // *****MESSAGE*****
 Route::post('/messages/send', [MessageController::class, 'send']);
@@ -92,6 +95,7 @@ Route::post('/messages/delivered', [MessageController::class, 'markAsDelivered']
 Route::post('/messages/seen', [MessageController::class, 'markAsSeen']);
 Route::post('/messages/history', [MessageController::class, 'getMessageHistory']);
 Route::get('/messages/getConvo/{userId}', [ConversationController::class, 'getConversations']);
+Route::post('/groq', [GroqController::class, 'query']);
 
 Route::post('/upload', [FileUploadController::class, 'upload'])->name('file.upload');
 Route::post('/multi-upload', [FileUploadController::class, 'multiUpload']);
