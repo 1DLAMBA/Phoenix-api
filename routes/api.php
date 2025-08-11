@@ -12,6 +12,8 @@ use App\Http\Controllers\MedicalRecordController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NurseController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\AiChatController;
+
 use App\Models\Appointment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
@@ -96,6 +98,14 @@ Route::post('/messages/seen', [MessageController::class, 'markAsSeen']);
 Route::post('/messages/history', [MessageController::class, 'getMessageHistory']);
 Route::get('/messages/getConvo/{userId}', [ConversationController::class, 'getConversations']);
 Route::post('/groq', [GroqController::class, 'query']);
+
+// *****AI CHAT*****
+Route::get('/ai/conversations', [AiChatController::class, 'index']); // expects ?user_id=
+Route::post('/ai/conversations', [AiChatController::class, 'create']);
+Route::get('/ai/conversations/{id}/messages', [AiChatController::class, 'messages']);
+Route::post('/ai/conversations/{id}/send', [AiChatController::class, 'send']);
+
+Route::get('/groq/key', [GroqController::class, 'getApiKey']);
 
 Route::post('/upload', [FileUploadController::class, 'upload'])->name('file.upload');
 Route::post('/multi-upload', [FileUploadController::class, 'multiUpload']);
