@@ -52,9 +52,10 @@ class MessageController extends Controller
         }
 
         $sender = User::findOrFail($request->sender_id);
-        // Optionally, you can broadcast the message in real time
+        // Broadcast the message in real time
+        // Pass the sender's name as a string (as expected by MessageSent event)
+        event(new MessageSent($message, $sender->name));
         
-        event(new MessageSent($message, $sender));
         return response()->json(['message' => 'Message sent successfully', 'data' => $message], 201);
     }
 
