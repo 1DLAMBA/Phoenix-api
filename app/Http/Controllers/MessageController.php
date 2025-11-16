@@ -52,9 +52,27 @@ class MessageController extends Controller
         }
 
         $sender = User::findOrFail($request->sender_id);
+        
         // Broadcast the message in real time
         // Pass the sender's name as a string (as expected by MessageSent event)
-        event(new MessageSent($message, $sender->name));
+        try {
+            \Log::info('Broadcasting MessageSent event', [
+                'message_id' => $message->id,
+                'sender_id' => $message->sender_id,
+                'receiver_id' => $message->receiver_id,
+                'broadcast_driver' => config('broadcasting.default')
+            ]);
+            
+            event(new MessageSent($message, $sender->name));
+            
+            \Log::info('MessageSent event fired successfully');
+        } catch (\Exception $e) {
+            \Log::error('Failed to broadcast MessageSent event', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // Don't fail the request if broadcasting fails
+        }
         
         return response()->json(['message' => 'Message sent successfully', 'data' => $message], 201);
     }

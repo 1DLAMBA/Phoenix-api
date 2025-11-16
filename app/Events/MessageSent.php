@@ -32,4 +32,23 @@ class MessageSent implements ShouldBroadcast
     {
         return 'MessageSent';
     }
+
+    /**
+     * Explicitly define the data structure to broadcast
+     * This ensures consistent data structure across all environments
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'message' => [
+                'id' => $this->message->id,
+                'sender_id' => $this->message->sender_id,
+                'receiver_id' => $this->message->receiver_id,
+                'message' => $this->message->message,
+                'status' => $this->message->status ?? 'sent',
+                'created_at' => $this->message->created_at?->toDateTimeString(),
+            ],
+            'sender_name' => $this->sender_name,
+        ];
+    }
 }
