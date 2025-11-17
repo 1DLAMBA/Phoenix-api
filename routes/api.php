@@ -79,6 +79,7 @@ Route::post('/doctor/create', [DoctorController::class, 'create']);
 Route::get('/doctor/get', [DoctorController::class, 'index']);
 Route::get('/doctor/get/{id}', [DoctorController::class, 'show']);
 Route::get('/doctor/user/get/{id}', [DoctorController::class, 'getDoc']);
+Route::post('/doctor/toggle-availability/{id}', [DoctorController::class, 'toggleAvailability']);
 
 // *****NURSE*****
 Route::post('/nurse/create', [NurseController::class, 'create']);

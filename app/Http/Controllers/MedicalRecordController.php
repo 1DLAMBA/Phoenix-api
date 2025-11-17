@@ -82,7 +82,7 @@ class MedicalRecordController extends Controller
     public function getDocRecord($doc_id)
     {
         //
-        $docMedRec = MedicalRecord::Where('assigned_doctor_id', $doc_id)->with('doctor.user')->get();
+        $docMedRec = MedicalRecord::Where('assigned_doctor_id', $doc_id)->with('doctor.user','client.user')->get();
         return response()->json([
             'record' => $docMedRec
                     ]);
@@ -91,7 +91,7 @@ class MedicalRecordController extends Controller
     public function getClientRecord($client_id)
     {
         //
-        $clientMedRec = MedicalRecord::Where('client_id', $client_id)->with('doctor.user')->get();
+        $clientMedRec = MedicalRecord::Where('client_id', $client_id)->with('doctor.user','client.user')->get();
         return response()->json([
             'record' => $clientMedRec
                     ]);

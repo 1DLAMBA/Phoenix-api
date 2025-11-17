@@ -13,9 +13,38 @@ class ClientController extends Controller
      */
     public function index()
     {
-        $client = Client::with('user')->get();
+        $query = Client::with(['user', 'doctors.user']);
+        
+        // Search functionality
+        if (request()->has('search') && !empty(request('search'))) {
+            $search = request('search');
+            $query->where(function($q) use ($search) {
+                $q->whereHas('user', function($userQuery) use ($search) {
+                    $userQuery->where('name', 'like', "%{$search}%")
+                              ->orWhere('email', 'like', "%{$search}%")
+                              ->orWhere('phoneno', 'like', "%{$search}%");
+                })->orWhereHas('doctors.user', function($doctorQuery) use ($search) {
+                    $doctorQuery->where('name', 'like', "%{$search}%");
+                });
+            });
+        }
+        
+        // Pagination
+        $perPage = request('per_page', 10);
+        $page = request('page', 1);
+        
+        $clients = $query->paginate($perPage, ['*'], 'page', $page);
+        
         return response()->json([
-            'client'=>$client
+            'client' => $clients->items(),
+            'pagination' => [
+                'current_page' => $clients->currentPage(),
+                'per_page' => $clients->perPage(),
+                'total' => $clients->total(),
+                'last_page' => $clients->lastPage(),
+                'from' => $clients->firstItem(),
+                'to' => $clients->lastItem()
+            ]
         ]);
     }
 

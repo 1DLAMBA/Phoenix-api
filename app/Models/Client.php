@@ -19,11 +19,11 @@ class Client extends Model
 
     public function doctors()
     {
-        return $this->hasOne(Doctor::class, 'assigned_doctor_id');
+        return $this->belongsTo(Doctor::class, 'assigned_doctor_id');
     }
     public function nurse()
     {
-        return $this->hasOne(Nurse::class, 'assigned_nurse_id');
+        return $this->belongsTo(Nurse::class, 'assigned_nurse_id');
     }
 
     public function assignment()

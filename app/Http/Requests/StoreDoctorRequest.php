@@ -22,12 +22,13 @@ class StoreDoctorRequest extends FormRequest
     public function rules(): array
     {
         return [
-        'user_id'=>'required|integer',
-        'license_number'=>'required|string', 
-        'med_school'=>'required|string', 
-        'specialization'=>'required|string',
-        'grad_year'=>'required|string',   
-        'degree_file'=>''
+        'user_id'=>'sometimes|integer',
+        'license_number'=>'sometimes|string', 
+        'med_school'=>'sometimes|string', 
+        'specialization'=>'sometimes|string',
+        'grad_year'=>'sometimes|string',   
+        'degree_file'=>'',
+        'availability'=>'sometimes|boolean'
         ];
     }
 }

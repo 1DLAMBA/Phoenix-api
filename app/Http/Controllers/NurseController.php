@@ -13,9 +13,37 @@ class NurseController extends Controller
      */
     public function index()
     {
-        $nurse = Nurse::with('user')->get();
+        $query = Nurse::with('user');
+        
+        // Search functionality
+        if (request()->has('search') && !empty(request('search'))) {
+            $search = request('search');
+            $query->where(function($q) use ($search) {
+                $q->whereHas('user', function($userQuery) use ($search) {
+                    $userQuery->where('name', 'like', "%{$search}%")
+                              ->orWhere('email', 'like', "%{$search}%")
+                              ->orWhere('phoneno', 'like', "%{$search}%");
+                })->orWhere('license_number', 'like', "%{$search}%")
+                  ->orWhere('specialization', 'like', "%{$search}%");
+            });
+        }
+        
+        // Pagination
+        $perPage = request('per_page', 10);
+        $page = request('page', 1);
+        
+        $nurses = $query->paginate($perPage, ['*'], 'page', $page);
+        
         return response()->json([
-            'nurse'=>$nurse
+            'nurse' => $nurses->items(),
+            'pagination' => [
+                'current_page' => $nurses->currentPage(),
+                'per_page' => $nurses->perPage(),
+                'total' => $nurses->total(),
+                'last_page' => $nurses->lastPage(),
+                'from' => $nurses->firstItem(),
+                'to' => $nurses->lastItem()
+            ]
         ]);
     }
 

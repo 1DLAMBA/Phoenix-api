@@ -86,4 +86,17 @@ class DoctorController extends Controller
     {
         //
     }
+
+
+    public function toggleAvailability(StoreDoctorRequest $request, string $id)
+    {
+        $validatedData = $request->validated();
+        $doctor = Doctor::findOrFail($id);
+        $doctor->availability = $validatedData['availability'];
+        $doctor->save();
+        return response()->json([
+            'message'=>'Availability toggled successfully',
+            'doctor'=>$doctor
+        ]);
+    }
 }

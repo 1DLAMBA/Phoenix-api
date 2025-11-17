@@ -24,7 +24,7 @@ class Nurse extends Model
     }
     public function clients()
     {
-        return $this->hasMany(Client::class);
+        return $this->hasMany(Client::class, 'assigned_nurse_id');
     }
     public function assignment()
     {
