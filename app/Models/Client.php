@@ -12,7 +12,6 @@ class Client extends Model
     protected $fillable = [
         'user_id',
         'assigned_doctor_id',
-        'appointment_id',
         'assigned_nurse_id', 
         'date_of_birth'    
     ];

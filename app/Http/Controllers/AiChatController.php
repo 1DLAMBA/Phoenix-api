@@ -9,6 +9,7 @@ use App\Models\Doctor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use App\Support\SpecializationInference;
+use App\Support\HospitalContextBuilder;
 
 class AiChatController extends Controller
 {
@@ -70,100 +71,28 @@ class AiChatController extends Controller
             'content' => $request->input('content'),
         ]);
 
-        // Build full message history
+        // Load user with relationships
+        $user = User::with(['doctors', 'nurses', 'clients'])->findOrFail($request->user_id);
+
+        // Build comprehensive context using HospitalContextBuilder
+        $contextBuilder = new HospitalContextBuilder();
+        $context = $contextBuilder->buildForUser($user, $request->input('content'), $convo->id);
+        $systemPrompt = $contextBuilder->formatSystemPrompt($context);
+
+        // Build message history
         $history = [];
+        
+        // Add custom system prompt if exists, otherwise use generated one
         if (!empty($convo->system_prompt)) {
-            $history[] = ['role' => 'system', 'content' => $convo->system_prompt];
+            $history[] = ['role' => 'system', 'content' => $convo->system_prompt . "\n\n" . $systemPrompt];
+        } else {
+            $history[] = ['role' => 'system', 'content' => $systemPrompt];
         }
+        
+        // Add conversation history
         foreach (AiMessage::where('ai_conversation_id', $convo->id)->orderBy('created_at')->get() as $m) {
             $history[] = ['role' => $m->role, 'content' => $m->content];
         }
-
-        // Include user context (name, role, and related profile) at the top
-        $user = User::with(['doctors', 'nurses', 'clients'])->findOrFail($request->user_id);
-        $role = $user->user_type;
-        $profile = null;
-        switch ($role) {
-            case 'doctor':
-                $doc = $user->doctors;
-                if ($doc) {
-                    $profile = [
-                        'license_number' => $doc->license_number,
-                        'med_school' => $doc->med_school,
-                        'specialization' => $doc->specialization,
-                        'grad_year' => $doc->grad_year,
-                        'availability' => $doc->availability,
-                    ];
-                }
-                break;
-            case 'nurse':
-                $nurse = $user->nurses;
-                if ($nurse) {
-                    $profile = [
-                        'license_number' => $nurse->license_number,
-                        'med_school' => $nurse->med_school,
-                        'specialization' => $nurse->specialization,
-                        'grad_year' => $nurse->grad_year,
-                    ];
-                }
-                break;
-            case 'client':
-                $client = $user->clients;
-                if ($client) {
-                    $profile = [
-                        'client_id' => $client->id,
-                        'date_of_birth' => $client->date_of_birth,
-                        'assigned_doctor_id' => $client->assigned_doctor_id,
-                        'assigned_nurse_id' => $client->assigned_nurse_id,
-                    ];
-                }
-                break;
-        }
-
-        // Optionally include doctor suggestions based on specialization provided
-        $availableDoctors = null;
-        $spec = $request->input('specialization');
-        if (empty($spec)) {
-            $spec = SpecializationInference::infer($request->input('content'));
-        }
-        if (!empty($spec)) {
-            $aliases = \App\Support\SpecializationAliases::aliasesFor($spec);
-            $doctors = Doctor::with('user')
-                ->where(function ($q) use ($aliases) {
-                    foreach ($aliases as $alias) {
-                        $q->orWhere('specialization', 'LIKE', '%' . $alias . '%');
-                    }
-                })
-                ->limit(10)
-                ->get();
-            if ($doctors->count() > 0) {
-                $availableDoctors = $doctors->map(fn($d) => [
-                    'doctor_id' => $d->id,
-                    'name' => optional($d->user)->name,
-                    'email' => optional($d->user)->email,
-                    'specialization' => $d->specialization,
-                    'availability' => $d->availability,
-                ])->values();
-            }
-        }
-
-        $contextObj = [
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phoneno' => $user->phoneno,
-                'gender' => $user->gender,
-                'role' => $role,
-                'profile' => $profile,
-            ],
-            'available_doctors' => $availableDoctors,
-            'instructions' => 'Personalize responses based on the user context. If available_doctors is present, use it to suggest suitable doctors to the user. Follow safe medical guidelines and avoid making diagnoses without disclaimers.',
-        ];
-
-
-        $context = 'User Context: ' . json_encode($contextObj);
-        array_unshift($history, ['role' => 'system', 'content' => $context]);
 
         // Call Hugging Face Inference Router (OpenAI-compatible)
         $token = env('HF_TOKEN', env('GROQ_API_KEY'));

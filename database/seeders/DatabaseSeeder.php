@@ -20,9 +20,8 @@ class DatabaseSeeder extends Seeder
         // ]);
 
         $this->call([
-            UserAndDoctorSeeder::class,
-            UserAndClientSeeder::class,
-            // Other seeders...
+            AllRolesSeeder::class,
+            // Other seeders can be added here if needed
         ]);
     }
 }
