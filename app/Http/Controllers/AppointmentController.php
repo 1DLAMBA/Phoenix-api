@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Appointment;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\UpdateAppointmentRequest;
+use App\Mail\AppointmentBookedMail;
 use Illuminate\Http\Request as HttpRequest;
-use Illuminate\Request;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 
 class AppointmentController extends Controller
 {
@@ -41,9 +43,23 @@ class AppointmentController extends Controller
         if($validatedData){
             $appointment = Appointment::create($validatedData);
             $appointment->save();
+            
+            // Load relationships for email
+            $appointment->load('doctor.user', 'client.user');
+            
+            // Send email notification to doctor
+            try {
+                if ($appointment->doctor && $appointment->doctor->user && $appointment->doctor->user->email) {
+                    Mail::to($appointment->doctor->user->email)->send(new AppointmentBookedMail($appointment));
+                }
+            } catch (\Exception $e) {
+                // Log the error but don't fail the appointment creation
+                \Log::error('Failed to send appointment email: ' . $e->getMessage());
+            }
         }
-        response()->json([
-            'success' => 'assignment created'
+        
+        return response()->json([
+            'success' => 'Appointment created successfully'
         ]);
     }
 
