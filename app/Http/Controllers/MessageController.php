@@ -56,20 +56,32 @@ class MessageController extends Controller
         // Broadcast the message in real time
         // Pass the sender's name as a string (as expected by MessageSent event)
         try {
+            $broadcastDriver = config('broadcasting.default');
+            $pusherKey = config('broadcasting.connections.pusher.key');
+            $pusherAppId = config('broadcasting.connections.pusher.app_id');
+            
             \Log::info('Broadcasting MessageSent event', [
                 'message_id' => $message->id,
                 'sender_id' => $message->sender_id,
                 'receiver_id' => $message->receiver_id,
-                'broadcast_driver' => config('broadcasting.default')
+                'broadcast_driver' => $broadcastDriver,
+                'pusher_key' => $pusherKey ? 'SET' : 'MISSING',
+                'pusher_app_id' => $pusherAppId ? 'SET' : 'MISSING',
+                'channel' => 'messaging-channel',
+                'event_name' => 'MessageSent'
             ]);
             
             event(new MessageSent($message, $sender->name));
             
-            \Log::info('MessageSent event fired successfully');
+            \Log::info('MessageSent event fired successfully', [
+                'message_id' => $message->id,
+                'broadcast_driver' => $broadcastDriver
+            ]);
         } catch (\Exception $e) {
             \Log::error('Failed to broadcast MessageSent event', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'message_id' => $message->id ?? 'unknown'
             ]);
             // Don't fail the request if broadcasting fails
         }

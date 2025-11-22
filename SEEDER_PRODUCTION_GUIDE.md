@@ -89,3 +89,5 @@ SEEDER_PHOTOS_PATH=/var/www/storage/seeder-photos
 SEEDER_DEFAULT_PASSWORD=ChangeThisPassword123!
 ```
 
+
+
