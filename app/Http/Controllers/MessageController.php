@@ -53,38 +53,73 @@ class MessageController extends Controller
 
         $sender = User::findOrFail($request->sender_id);
         
+        // DEBUG: Log BEFORE broadcast attempt
+        \Log::info('=== MESSAGE SEND DEBUG START ===', [
+            'message_id' => $message->id,
+            'sender_id' => $message->sender_id,
+            'receiver_id' => $message->receiver_id,
+            'sender_name' => $sender->name ?? 'NO_NAME'
+        ]);
+        
         // Broadcast the message in real time
         // Pass the sender's name as a string (as expected by MessageSent event)
         try {
+            // Check if event class exists
+            if (!class_exists(\App\Events\MessageSent::class)) {
+                \Log::error('MessageSent event class does not exist!');
+                throw new \Exception('MessageSent event class not found');
+            }
+            
             $broadcastDriver = config('broadcasting.default');
             $pusherKey = config('broadcasting.connections.pusher.key');
             $pusherAppId = config('broadcasting.connections.pusher.app_id');
+            $pusherSecret = config('broadcasting.connections.pusher.secret');
+            $pusherCluster = config('broadcasting.connections.pusher.options.cluster');
             
-            \Log::info('Broadcasting MessageSent event', [
+            \Log::info('Broadcasting MessageSent event - PRE EVENT', [
                 'message_id' => $message->id,
                 'sender_id' => $message->sender_id,
                 'receiver_id' => $message->receiver_id,
                 'broadcast_driver' => $broadcastDriver,
-                'pusher_key' => $pusherKey ? 'SET' : 'MISSING',
-                'pusher_app_id' => $pusherAppId ? 'SET' : 'MISSING',
+                'pusher_key' => $pusherKey ? substr($pusherKey, 0, 10) . '...' : 'MISSING',
+                'pusher_app_id' => $pusherAppId ?: 'MISSING',
+                'pusher_secret' => $pusherSecret ? 'SET' : 'MISSING',
+                'pusher_cluster' => $pusherCluster ?: 'MISSING',
                 'channel' => 'messaging-channel',
-                'event_name' => 'MessageSent'
+                'event_name' => 'MessageSent',
+                'event_class_exists' => class_exists(\App\Events\MessageSent::class)
             ]);
             
-            event(new MessageSent($message, $sender->name));
+            // Create event instance
+            $event = new \App\Events\MessageSent($message, $sender->name);
+            \Log::info('Event instance created', ['message_id' => $message->id]);
             
-            \Log::info('MessageSent event fired successfully', [
+            // Fire the event
+            event($event);
+            
+            \Log::info('Event fired - POST EVENT', [
                 'message_id' => $message->id,
                 'broadcast_driver' => $broadcastDriver
             ]);
+            
         } catch (\Exception $e) {
-            \Log::error('Failed to broadcast MessageSent event', [
+            \Log::error('=== BROADCAST EXCEPTION ===', [
                 'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
                 'message_id' => $message->id ?? 'unknown'
             ]);
-            // Don't fail the request if broadcasting fails
+        } catch (\Throwable $e) {
+            \Log::error('=== BROADCAST THROWABLE ===', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'message_id' => $message->id ?? 'unknown'
+            ]);
         }
+        
+        \Log::info('=== MESSAGE SEND DEBUG END ===', ['message_id' => $message->id]);
         
         return response()->json(['message' => 'Message sent successfully', 'data' => $message], 201);
     }

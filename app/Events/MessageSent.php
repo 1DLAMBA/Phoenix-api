@@ -20,17 +20,32 @@ class MessageSent implements ShouldBroadcastNow
 
     public function __construct(Message $message, String $sender_name)
     {
+        \Log::info('MessageSent event CONSTRUCTOR called', [
+            'message_id' => $message->id,
+            'sender_id' => $message->sender_id,
+            'receiver_id' => $message->receiver_id,
+            'sender_name' => $sender_name
+        ]);
+        
         $this->message = $message;
         $this->sender_name = $sender_name;
     }
 
     public function broadcastOn()
     {
+        \Log::info('MessageSent broadcastOn() called', [
+            'channel' => 'messaging-channel',
+            'message_id' => $this->message->id ?? 'unknown'
+        ]);
         return new Channel('messaging-channel');
     }
 
     public function broadcastAs(): string
     {
+        \Log::info('MessageSent broadcastAs() called', [
+            'event_name' => 'MessageSent',
+            'message_id' => $this->message->id ?? 'unknown'
+        ]);
         return 'MessageSent';
     }
 
@@ -40,6 +55,12 @@ class MessageSent implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
+        \Log::info('MessageSent broadcastWith() called', [
+            'message_id' => $this->message->id ?? 'unknown',
+            'sender_id' => $this->message->sender_id ?? 'unknown',
+            'receiver_id' => $this->message->receiver_id ?? 'unknown'
+        ]);
+        
         return [
             'message' => [
                 'id' => $this->message->id,
