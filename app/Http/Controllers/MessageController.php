@@ -60,6 +60,20 @@ class MessageController extends Controller
         
         // Create notification for receiver (in addition to Pusher real-time notification)
         $receiver = User::find($request->receiver_id);
+        
+        if (!$receiver) {
+            Log::warning('Cannot send message notification: receiver not found', [
+                'receiver_id' => $request->receiver_id,
+                'message_id' => $message->id
+            ]);
+        } elseif (!$receiver->email) {
+            Log::warning('Cannot send message email: receiver has no email address', [
+                'receiver_id' => $receiver->id,
+                'receiver_name' => $receiver->name,
+                'message_id' => $message->id
+            ]);
+        }
+        
         if ($receiver) {
             $notification = Notification::create([
                 'user_id' => $request->receiver_id,
@@ -78,12 +92,33 @@ class MessageController extends Controller
             }
             
             // Send email notification to receiver
-            try {
-                if ($receiver->email) {
+            if ($receiver->email) {
+                try {
+                    Log::info('Attempting to send message email', [
+                        'receiver_id' => $receiver->id,
+                        'receiver_email' => $receiver->email,
+                        'sender_id' => $sender->id,
+                        'sender_name' => $sender->name,
+                        'message_id' => $message->id
+                    ]);
+                    
                     Mail::to($receiver->email)->send(new MessageSentMail($message, $sender, $receiver));
+                    
+                    Log::info('Message email sent successfully', [
+                        'receiver_email' => $receiver->email,
+                        'message_id' => $message->id
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to send message email', [
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'receiver_id' => $receiver->id ?? 'unknown',
+                        'receiver_email' => $receiver->email ?? 'unknown',
+                        'message_id' => $message->id ?? 'unknown',
+                        'trace' => $e->getTraceAsString()
+                    ]);
                 }
-            } catch (\Exception $e) {
-                Log::error('Failed to send message email: ' . $e->getMessage());
             }
         }
         

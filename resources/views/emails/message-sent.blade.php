@@ -157,14 +157,14 @@
                 <div class="info-row">
                     <div class="info-label">Date & Time</div>
                     <div class="info-value">
-                        {{ \Carbon\Carbon::parse($message->created_at)->format('F d, Y \a\t g:i A') }}
+                        {{ \Carbon\Carbon::parse($messageModel->created_at)->format('F d, Y \a\t g:i A') }}
                     </div>
                 </div>
                 
                 <div class="message-section">
                     <div class="message-label">Message</div>
                     <div class="message-content">
-                        {{ $message->message }}
+                        {{ $messageModel->message }}
                     </div>
                 </div>
             </div>

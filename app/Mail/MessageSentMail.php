@@ -14,7 +14,7 @@ class MessageSentMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $message;
+    public $messageModel;
     public $sender;
     public $receiver;
 
@@ -23,7 +23,7 @@ class MessageSentMail extends Mailable
      */
     public function __construct(Message $message, User $sender, User $receiver)
     {
-        $this->message = $message;
+        $this->messageModel = $message;
         $this->sender = $sender;
         $this->receiver = $receiver;
     }
@@ -46,7 +46,7 @@ class MessageSentMail extends Mailable
         return new Content(
             view: 'emails.message-sent',
             with: [
-                'message' => $this->message,
+                'messageModel' => $this->messageModel,
                 'sender' => $this->sender,
                 'receiver' => $this->receiver,
             ],
