@@ -4,8 +4,13 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use App\Models\MedicalRecord;
+use App\Models\Notification;
+use App\Events\NotificationSent;
+use App\Mail\MedicalRecordCreatedMail;
 use App\Http\Requests\StoreMedicalRecordRequest;
 use App\Http\Requests\UpdateMedicalRecordRequest;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class MedicalRecordController extends Controller
 {
@@ -37,6 +42,42 @@ class MedicalRecordController extends Controller
         if($validateData){
             $medical_record = MedicalRecord::create($validateData);
             $medical_record->save();
+
+            // Load relationships
+            $medical_record->load('client.user', 'doctor.user');
+
+            // Create notification for client about medical record creation
+            if ($medical_record->client && $medical_record->client->user) {
+                $doctorName = $medical_record->doctor && $medical_record->doctor->user 
+                    ? $medical_record->doctor->user->name 
+                    : 'Your doctor';
+                
+                $notification = Notification::create([
+                    'user_id' => $medical_record->client->user->id,
+                    'type' => 'medical_record_created',
+                    'title' => 'New Medical Record',
+                    'message' => $doctorName . ' has created a new medical record for you (Record #' . $medical_record->record_number . ')',
+                    'related_id' => $medical_record->id,
+                    'related_type' => 'MedicalRecord',
+                ]);
+
+                // Broadcast the notification in real-time
+                try {
+                    event(new NotificationSent($notification));
+                } catch (\Exception $e) {
+                    Log::error('Failed to broadcast medical record notification: ' . $e->getMessage());
+                }
+                
+                // Send email notification to client
+                try {
+                    if ($medical_record->client->user->email) {
+                        Mail::to($medical_record->client->user->email)->send(new MedicalRecordCreatedMail($medical_record));
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Failed to send medical record email: ' . $e->getMessage());
+                }
+            }
+
             return response()->json([
                 'record' => $medical_record
                         ]);

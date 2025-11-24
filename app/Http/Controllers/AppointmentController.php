@@ -3,12 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\Notification;
+use App\Events\NotificationSent;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\UpdateAppointmentRequest;
 use App\Mail\AppointmentBookedMail;
+use App\Mail\AppointmentAcceptedMail;
 use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class AppointmentController extends Controller
 {
@@ -54,7 +58,30 @@ class AppointmentController extends Controller
                 }
             } catch (\Exception $e) {
                 // Log the error but don't fail the appointment creation
-                \Log::error('Failed to send appointment email: ' . $e->getMessage());
+                Log::error('Failed to send appointment email: ' . $e->getMessage());
+            }
+
+            // Create notification for doctor about new appointment booking
+            if ($appointment->doctor && $appointment->doctor->user) {
+                $clientName = $appointment->client && $appointment->client->user 
+                    ? $appointment->client->user->name 
+                    : 'A client';
+                
+                $notification = Notification::create([
+                    'user_id' => $appointment->doctor->user->id,
+                    'type' => 'appointment_booking',
+                    'title' => 'New Appointment Booking',
+                    'message' => $clientName . ' has booked an appointment with you for ' . date('M d, Y h:i A', strtotime($appointment->date_time)),
+                    'related_id' => $appointment->id,
+                    'related_type' => 'Appointment',
+                ]);
+
+                // Broadcast the notification in real-time
+                try {
+                    event(new NotificationSent($notification));
+                } catch (\Exception $e) {
+                    Log::error('Failed to broadcast appointment booking notification: ' . $e->getMessage());
+                }
             }
         }
         
@@ -97,6 +124,74 @@ class AppointmentController extends Controller
         $appointment = Appointment::findorfail($id);
         $appointment->status = $requestStatus;
         $appointment->save();
+
+        // Refresh the appointment to ensure relationships are available
+        $appointment->refresh();
+        
+        // Load relationships
+        $appointment->load('doctor.user', 'client.user');
+
+        // Create notification when appointment is accepted
+        // Check for both lowercase and capitalized versions
+        $statusLower = strtolower($requestStatus);
+        if ($statusLower === 'accepted' || $statusLower === 'approved') {
+            try {
+                // Check if client relationship exists
+                if ($appointment->client_id && $appointment->client) {
+                    $client = $appointment->client;
+                    
+                    // Check if client has a user relationship
+                    if ($client->user_id && $client->user) {
+                        $doctorName = 'Your doctor';
+                        if ($appointment->doctor_id && $appointment->doctor && $appointment->doctor->user) {
+                            $doctorName = $appointment->doctor->user->name;
+                        }
+                        
+                        $notification = Notification::create([
+                            'user_id' => $client->user->id,
+                            'type' => 'appointment_accepted',
+                            'title' => 'Appointment Accepted',
+                            'message' => $doctorName . ' has accepted your appointment scheduled for ' . date('M d, Y h:i A', strtotime($appointment->date_time)),
+                            'related_id' => $appointment->id,
+                            'related_type' => 'Appointment',
+                        ]);
+
+                        // Broadcast the notification in real-time
+                        try {
+                            event(new NotificationSent($notification));
+                        } catch (\Exception $e) {
+                            Log::error('Failed to broadcast appointment acceptance notification: ' . $e->getMessage());
+                        }
+                        
+                        // Send email notification to client
+                        try {
+                            if ($client->user->email) {
+                                Mail::to($client->user->email)->send(new AppointmentAcceptedMail($appointment));
+                            }
+                        } catch (\Exception $e) {
+                            Log::error('Failed to send appointment acceptance email: ' . $e->getMessage());
+                        }
+                    } else {
+                        Log::warning('Appointment notification: Client user not found', [
+                            'appointment_id' => $appointment->id,
+                            'client_id' => $appointment->client_id,
+                            'client_user_id' => $client->user_id ?? 'null'
+                        ]);
+                    }
+                } else {
+                    Log::warning('Appointment notification: Client not found', [
+                        'appointment_id' => $appointment->id,
+                        'client_id' => $appointment->client_id ?? 'null'
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to create appointment acceptance notification: ' . $e->getMessage(), [
+                    'appointment_id' => $appointment->id,
+                    'error' => $e->getTraceAsString()
+                ]);
+            }
+        }
+
         return response()->json([
             'Approved'=>'Appointment Edited'
         ]);
