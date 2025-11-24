@@ -3,10 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessageSent;
+use App\Events\NotificationSent;
+use App\Mail\MessageSentMail;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class MessageController extends Controller
 {
@@ -52,6 +57,35 @@ class MessageController extends Controller
         }
 
         $sender = User::findOrFail($request->sender_id);
+        
+        // Create notification for receiver (in addition to Pusher real-time notification)
+        $receiver = User::find($request->receiver_id);
+        if ($receiver) {
+            $notification = Notification::create([
+                'user_id' => $request->receiver_id,
+                'type' => 'message',
+                'title' => 'New Message from ' . $sender->name,
+                'message' => $request->message,
+                'related_id' => $message->id,
+                'related_type' => 'Message',
+            ]);
+
+            // Broadcast the notification in real-time
+            try {
+                event(new NotificationSent($notification));
+            } catch (\Exception $e) {
+                Log::error('Failed to broadcast message notification: ' . $e->getMessage());
+            }
+            
+            // Send email notification to receiver
+            try {
+                if ($receiver->email) {
+                    Mail::to($receiver->email)->send(new MessageSentMail($message, $sender, $receiver));
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to send message email: ' . $e->getMessage());
+            }
+        }
         
         // DEBUG: Log BEFORE broadcast attempt
         \Log::info('=== MESSAGE SEND DEBUG START ===', [

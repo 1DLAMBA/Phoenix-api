@@ -10,6 +10,7 @@ use App\Http\Controllers\FileUploadController;
 use App\Http\Controllers\GroqController;
 use App\Http\Controllers\MedicalRecordController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NurseController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiChatController;
@@ -99,6 +100,14 @@ Route::post('/messages/seen', [MessageController::class, 'markAsSeen']);
 Route::post('/messages/history', [MessageController::class, 'getMessageHistory']);
 Route::get('/messages/getConvo/{userId}', [ConversationController::class, 'getConversations']);
 Route::post('/groq', [GroqController::class, 'query']);
+
+// *****NOTIFICATION*****
+Route::get('/notifications', [NotificationController::class, 'index']);
+Route::get('/notifications/unread', [NotificationController::class, 'unread']);
+Route::get('/notifications/count', [NotificationController::class, 'count']);
+Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
 // *****AI CHAT*****
 Route::get('/ai/conversations', [AiChatController::class, 'index']); // expects ?user_id=
