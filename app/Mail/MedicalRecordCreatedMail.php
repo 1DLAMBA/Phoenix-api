@@ -59,3 +59,5 @@ class MedicalRecordCreatedMail extends Mailable
     }
 }
 
+
+

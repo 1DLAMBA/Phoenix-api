@@ -59,3 +59,5 @@ class AppointmentAcceptedMail extends Mailable
     }
 }
 
+
+
