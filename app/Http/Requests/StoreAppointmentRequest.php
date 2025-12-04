@@ -23,7 +23,8 @@ class StoreAppointmentRequest extends FormRequest
     {
         return [
             'client_id' => 'required|integer',
-            'doctor_id' => 'required|integer',
+            'doctor_id' => 'nullable|integer|required_without:other_professional_id',
+            'other_professional_id' => 'nullable|integer|required_without:doctor_id',
             'status' => 'required|string',
             'symptoms' => 'required|string',
             'date_time' => ''

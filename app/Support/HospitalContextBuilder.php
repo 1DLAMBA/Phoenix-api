@@ -50,7 +50,7 @@ class HospitalContextBuilder
             
             // Doctor-specific context
             $context['doctor_profile'] = $this->buildDoctorProfile($doctor);
-            $context['doctor_appointments'] = $this->buildDoctorAppointments($doctor);
+            $context[ 'doctor_appointments'] = $this->buildDoctorAppointments($doctor);
             $context['doctor_clients'] = $this->buildDoctorClients($doctor);
             $context['doctor_records'] = $this->buildDoctorMedicalRecords($doctor);
             
@@ -68,7 +68,7 @@ class HospitalContextBuilder
         }
 
         // Doctor suggestions (only for clients)
-        if ($user->user_type === 'client') {
+        if ($user->user_type === 'client') { 
             $context['doctors'] = $this->buildDoctorSuggestions($user, null, $userMessage);
         }
 

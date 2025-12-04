@@ -2,25 +2,28 @@
 
 namespace App\Mail;
 
-use App\Models\MedicalRecord;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Queue\SerializesModels;
 
-class MedicalRecordCreatedMail extends Mailable
+class OtpVerificationMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $medicalRecord;
+    public $user;
+    public $otp;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(MedicalRecord $medicalRecord)
+    public function __construct(User $user, string $otp)
     {
-        $this->medicalRecord = $medicalRecord;
+        $this->user = $user;
+        $this->otp = $otp;
     }
 
     /**
@@ -29,7 +32,7 @@ class MedicalRecordCreatedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'New Medical Record Created',
+            subject: 'Welcome to Phoenix - Verify Your Email',
         );
     }
 
@@ -39,11 +42,10 @@ class MedicalRecordCreatedMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'emails.medical-record-created',
+            view: 'emails.otp-verification',
             with: [
-                'medicalRecord' => $this->medicalRecord,
-                'doctor' => $this->medicalRecord->doctor->load('user'),
-                'client' => $this->medicalRecord->client->load('user'),
+                'user' => $this->user,
+                'otp' => $this->otp,
             ],
         );
     }
@@ -55,15 +57,16 @@ class MedicalRecordCreatedMail extends Mailable
      */
     public function attachments(): array
     {
+        $logoPath = public_path('images/phoenix-logo.png');
+        
+        if (file_exists($logoPath)) {
+            return [
+                Attachment::fromPath($logoPath)
+                    ->as('phoenix-logo.png')
+                    ->withMime('image/png'),
+            ];
+        }
+        
         return [];
     }
 }
-
-
-
-
-
-
-
-
-

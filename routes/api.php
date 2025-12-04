@@ -12,6 +12,7 @@ use App\Http\Controllers\MedicalRecordController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NurseController;
+use App\Http\Controllers\OtherProfessionalController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiChatController;
 
@@ -50,12 +51,15 @@ Route::post('/user/register', [UserController::class, 'create']);
 Route::post('/user/login', [UserController::class, 'login']);
 Route::get('/user/get/{id}', [UserController::class, 'show']);
 Route::get('/users/get', [UserController::class, 'index']);
+Route::post('/user/verify-otp', [UserController::class, 'verifyOtp']);
+Route::post('/user/regenerate-otp', [UserController::class, 'regenerateOtp']);
 
 // *****APPPOINTMENT*****
 Route::post('/appointment/create', [AppointmentController::class, 'store']);
 Route::post('/appointment/statusedit/{id}', [AppointmentController::class, 'edit']);
 Route::get('/appointment/get/{id}', [AppointmentController::class, 'show']);
 Route::get('/appointment/doctor/get/{id}', [AppointmentController::class, 'showDoc']);
+Route::get('/appointment/other-professional/get/{id}', [AppointmentController::class, 'showOtherProfessional']);
 Route::get('/appointment/admin/get/{id}', [AppointmentController::class, 'showAdm']);
 Route::get('/appointment/client/get/{id}', [AppointmentController::class, 'showCli']);
 Route::delete('/appointment/delete/{id}', [AppointmentController::class, 'delete']);
@@ -86,6 +90,12 @@ Route::post('/doctor/toggle-availability/{id}', [DoctorController::class, 'toggl
 Route::post('/nurse/create', [NurseController::class, 'create']);
 Route::get('/nurse/get', [NurseController::class, 'index']);
 Route::get('/nurse/get/{id}', [NurseController::class, 'show']);
+
+// *****OTHER_PROFESSIONAL*****
+Route::post('/other-professional/create', [OtherProfessionalController::class, 'create']);
+Route::get('/other-professional/get', [OtherProfessionalController::class, 'index']);
+Route::get('/other-professional/get/{id}', [OtherProfessionalController::class, 'show']);
+Route::get('/other-professional/user/get/{id}', [OtherProfessionalController::class, 'getOtherProfessionalUser']);
 
 // *****MEDICALRECORD*****
 Route::post('/medical/create', [MedicalRecordController::class, 'store']);

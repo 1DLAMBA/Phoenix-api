@@ -5,11 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Nurse extends Model
+class OtherProfessional extends Model
 {
     use HasFactory;
+    
     protected $fillable = [
         'user_id',
+        'professional_type',
         'license_number', 
         'med_school', 
         'specialization',
@@ -23,10 +25,12 @@ class Nurse extends Model
     {
         return $this->hasMany(Appointment::class);
     }
+    
     public function clients()
     {
-        return $this->hasMany(Client::class, 'assigned_nurse_id');
+        return $this->hasMany(Client::class, 'assigned_other_professional_id');
     }
+    
     public function assignment()
     {
         return $this->hasMany(Assignments::class);
@@ -36,6 +40,7 @@ class Nurse extends Model
     {
         return $this->hasMany(MedicalRecord::class);
     }
+    
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');

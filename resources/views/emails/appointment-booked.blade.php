@@ -125,7 +125,17 @@
         
         <div class="content">
             <div class="greeting">
-                Dear Dr. {{ $doctor->user->name }},
+                Dear @if($professional && $professional->user)
+                    @if(isset($professional->professional_type))
+                        {{ $professional->professional_type }} {{ $professional->user->name }}
+                    @else
+                        Dr. {{ $professional->user->name }}
+                    @endif
+                @elseif($doctor && $doctor->user)
+                    Dr. {{ $doctor->user->name }}
+                @else
+                    Healthcare Professional
+                @endif,
             </div>
             
             <p style="margin: 0 0 20px 0; color: #5a6c7d; font-size: 14px;">

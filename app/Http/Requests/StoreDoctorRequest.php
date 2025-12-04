@@ -28,6 +28,8 @@ class StoreDoctorRequest extends FormRequest
         'specialization'=>'sometimes|string',
         'grad_year'=>'sometimes|string',   
         'degree_file'=>'',
+        'signature'=>'',
+        'id_card'=>'',
         'availability'=>'sometimes|boolean'
         ];
     }

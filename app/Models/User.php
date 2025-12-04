@@ -25,6 +25,8 @@ class User extends Authenticatable
         'user_type',
         'passport',
         'password',
+        'email_verification_otp',
+        'otp_expires_at',
     ];
     public function doctors()
     {
@@ -37,6 +39,10 @@ class User extends Authenticatable
     public function clients()
     {
         return $this->hasOne(Client::class);
+    }
+    public function otherProfessionals()
+    {
+        return $this->hasOne(OtherProfessional::class);
     }
     public function sentMessages()
     {

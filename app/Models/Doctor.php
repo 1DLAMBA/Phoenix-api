@@ -15,6 +15,8 @@ class Doctor extends Model
         'specialization',
         'grad_year',   
         'degree_file',
+        'signature',
+        'id_card',
         'availability'
     ];
     

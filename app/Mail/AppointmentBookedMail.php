@@ -38,12 +38,30 @@ class AppointmentBookedMail extends Mailable
      */
     public function content(): Content
     {
+        // Load relationships if not already loaded
+        $this->appointment->load('doctor.user', 'otherProfessional.user', 'client.user');
+        
+        // Determine which professional (doctor or other_professional)
+        $professional = $this->appointment->doctor ?? $this->appointment->otherProfessional;
+        
+        // Ensure professional and user are loaded
+        if ($professional && !$professional->relationLoaded('user')) {
+            $professional->load('user');
+        }
+        
+        // Ensure client and user are loaded
+        $client = $this->appointment->client;
+        if ($client && !$client->relationLoaded('user')) {
+            $client->load('user');
+        }
+        
         return new Content(
             view: 'emails.appointment-booked',
             with: [
                 'appointment' => $this->appointment,
-                'doctor' => $this->appointment->doctor->load('user'),
-                'client' => $this->appointment->client->load('user'),
+                'professional' => $professional,
+                'doctor' => $professional, // Keep for backward compatibility with template
+                'client' => $client,
             ],
         );
     }

@@ -21,7 +21,7 @@ class AppointmentController extends Controller
      */
     public function index()
     {
-        $appointment = Appointment::with('doctor', 'client');
+        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'client.user');
         return response()->json([
             'appointments'=>$appointment
         ]);
@@ -48,27 +48,39 @@ class AppointmentController extends Controller
             $appointment = Appointment::create($validatedData);
             $appointment->save();
             
-            // Load relationships for email
-            $appointment->load('doctor.user', 'client.user');
+            // Refresh to ensure we have the latest data
+            $appointment->refresh();
             
-            // Send email notification to doctor
-            try {
-                if ($appointment->doctor && $appointment->doctor->user && $appointment->doctor->user->email) {
-                    Mail::to($appointment->doctor->user->email)->send(new AppointmentBookedMail($appointment));
+            // Load relationships for email - handle both doctor and other_professional
+            $appointment->load('doctor.user', 'otherProfessional.user', 'client.user');
+            
+            // Determine which professional to notify
+            $professional = $appointment->doctor ?? $appointment->otherProfessional;
+            
+            // Send email notification to professional
+            if ($professional && $professional->user) {
+                try {
+                    if ($professional->user->email) {
+                        Mail::to($professional->user->email)->send(new AppointmentBookedMail($appointment));
+                    }
+                } catch (\Exception $e) {
+                    // Log the error but don't fail the appointment creation
+                    Log::error('Failed to send appointment email: ' . $e->getMessage(), [
+                        'appointment_id' => $appointment->id,
+                        'professional_id' => $professional->id,
+                        'error' => $e->getMessage()
+                    ]);
                 }
-            } catch (\Exception $e) {
-                // Log the error but don't fail the appointment creation
-                Log::error('Failed to send appointment email: ' . $e->getMessage());
-            }
 
-            // Create notification for doctor about new appointment booking
-            if ($appointment->doctor && $appointment->doctor->user) {
+                // Create notification for professional about new appointment booking
                 $clientName = $appointment->client && $appointment->client->user 
                     ? $appointment->client->user->name 
                     : 'A client';
                 
+                $professionalName = $professional->user->name ?? 'Healthcare Professional';
+                
                 $notification = Notification::create([
-                    'user_id' => $appointment->doctor->user->id,
+                    'user_id' => $professional->user->id,
                     'type' => 'appointment_booking',
                     'title' => 'New Appointment Booking',
                     'message' => $clientName . ' has booked an appointment with you for ' . date('M d, Y h:i A', strtotime($appointment->date_time)),
@@ -80,8 +92,17 @@ class AppointmentController extends Controller
                 try {
                     event(new NotificationSent($notification));
                 } catch (\Exception $e) {
-                    Log::error('Failed to broadcast appointment booking notification: ' . $e->getMessage());
+                    Log::error('Failed to broadcast appointment booking notification: ' . $e->getMessage(), [
+                        'notification_id' => $notification->id,
+                        'error' => $e->getMessage()
+                    ]);
                 }
+            } else {
+                Log::warning('Appointment created but professional not found for notification', [
+                    'appointment_id' => $appointment->id,
+                    'doctor_id' => $appointment->doctor_id,
+                    'other_professional_id' => $appointment->other_professional_id
+                ]);
             }
         }
         
@@ -95,21 +116,35 @@ class AppointmentController extends Controller
      */
     public function show($id)
     {
-        $appointment = Appointment::with('doctor.user', 'client.user')->findorfail($id);
+        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'client.user')->findorfail($id);
         return response()->json([
             'appointments'=>$appointment
         ]);
     }
     public function showDoc($id)
     {
-        $appointment = Appointment::with(['client.user'])->where('doctor_id', $id)->orderBy('created_at', 'desc')->get();
+        $appointment = Appointment::with(['client.user', 'otherProfessional.user'])
+            ->where('doctor_id', $id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        return response()->json([
+            'appointments'=>$appointment
+        ]);
+    }
+    
+    public function showOtherProfessional($id)
+    {
+        $appointment = Appointment::with(['client.user', 'doctor.user'])
+            ->where('other_professional_id', $id)
+            ->orderBy('created_at', 'desc')
+            ->get();
         return response()->json([
             'appointments'=>$appointment
         ]);
     }
     public function showCli($id)
     {
-        $appointment = Appointment::with('doctor.user')->where('client_id', $id)->get();
+        $appointment = Appointment::with('doctor.user', 'otherProfessional.user')->where('client_id', $id)->get();
         return response()->json([
             'appointments'=>$appointment
         ]);
@@ -125,69 +160,146 @@ class AppointmentController extends Controller
         $appointment->status = $requestStatus;
         $appointment->save();
 
-        // Refresh the appointment to ensure relationships are available
+        // Refresh the appointment to ensure we have the latest data
         $appointment->refresh();
         
-        // Load relationships
-        $appointment->load('doctor.user', 'client.user');
+        // Load relationships - handle both doctor and other_professional
+        // Use fresh() to ensure we get the latest relationships
+        $appointment = $appointment->fresh(['doctor.user', 'otherProfessional.user', 'client.user']);
+        
+        Log::info('Appointment status updated', [
+            'appointment_id' => $appointment->id,
+            'status' => $requestStatus,
+            'doctor_id' => $appointment->doctor_id,
+            'other_professional_id' => $appointment->other_professional_id,
+            'has_doctor' => isset($appointment->doctor),
+            'has_other_professional' => isset($appointment->otherProfessional),
+            'has_client' => isset($appointment->client)
+        ]);
 
         // Create notification when appointment is accepted
         // Check for both lowercase and capitalized versions
         $statusLower = strtolower($requestStatus);
         if ($statusLower === 'accepted' || $statusLower === 'approved') {
             try {
+                Log::info('Processing appointment acceptance', [
+                    'appointment_id' => $appointment->id,
+                    'doctor_id' => $appointment->doctor_id,
+                    'other_professional_id' => $appointment->other_professional_id,
+                    'client_id' => $appointment->client_id
+                ]);
+                
                 // Check if client relationship exists
                 if ($appointment->client_id && $appointment->client) {
                     $client = $appointment->client;
                     
                     // Check if client has a user relationship
                     if ($client->user_id && $client->user) {
-                        $doctorName = 'Your doctor';
-                        if ($appointment->doctor_id && $appointment->doctor && $appointment->doctor->user) {
-                            $doctorName = $appointment->doctor->user->name;
+                        // Determine which professional accepted
+                        $professional = $appointment->doctor ?? $appointment->otherProfessional;
+                        $professionalName = 'Your healthcare provider';
+                        $professionalType = 'unknown';
+                        
+                        if ($appointment->doctor && $appointment->doctor->user) {
+                            $professionalName = $appointment->doctor->user->name;
+                            $professionalType = 'doctor';
+                        } elseif ($appointment->otherProfessional && $appointment->otherProfessional->user) {
+                            $professionalName = $appointment->otherProfessional->user->name;
+                            $professionalType = 'other_professional';
                         }
+                        
+                        Log::info('Creating notification for appointment acceptance', [
+                            'appointment_id' => $appointment->id,
+                            'client_user_id' => $client->user->id,
+                            'professional_type' => $professionalType,
+                            'professional_name' => $professionalName
+                        ]);
                         
                         $notification = Notification::create([
                             'user_id' => $client->user->id,
                             'type' => 'appointment_accepted',
                             'title' => 'Appointment Accepted',
-                            'message' => $doctorName . ' has accepted your appointment scheduled for ' . date('M d, Y h:i A', strtotime($appointment->date_time)),
+                            'message' => $professionalName . ' has accepted your appointment scheduled for ' . date('M d, Y h:i A', strtotime($appointment->date_time)),
                             'related_id' => $appointment->id,
                             'related_type' => 'Appointment',
                         ]);
 
-                        // Broadcast the notification in real-time
-                        try {
-                            event(new NotificationSent($notification));
-                        } catch (\Exception $e) {
-                            Log::error('Failed to broadcast appointment acceptance notification: ' . $e->getMessage());
+                        // Ensure notification is saved and has an ID
+                        if (!$notification->id) {
+                            Log::error('Notification was not saved properly', [
+                                'notification_data' => $notification->toArray()
+                            ]);
+                        } else {
+                            // Refresh notification to ensure all attributes are loaded
+                            $notification->refresh();
+                            
+                            Log::info('Notification created successfully', [
+                                'notification_id' => $notification->id,
+                                'user_id' => $notification->user_id,
+                                'type' => $notification->type,
+                                'title' => $notification->title
+                            ]);
+
+                            // Broadcast the notification in real-time
+                            try {
+                                Log::info('Broadcasting notification via websocket', [
+                                    'notification_id' => $notification->id,
+                                    'user_id' => $notification->user_id,
+                                    'channel' => 'notifications-channel'
+                                ]);
+                                
+                                // Create and dispatch the event
+                                $event = new NotificationSent($notification);
+                                event($event);
+                                
+                                Log::info('Notification broadcasted successfully', [
+                                    'notification_id' => $notification->id,
+                                    'event_dispatched' => true
+                                ]);
+                            } catch (\Exception $e) {
+                                Log::error('Failed to broadcast appointment acceptance notification', [
+                                    'notification_id' => $notification->id ?? 'unknown',
+                                    'user_id' => $notification->user_id ?? 'unknown',
+                                    'error' => $e->getMessage(),
+                                    'trace' => $e->getTraceAsString()
+                                ]);
+                            }
                         }
                         
                         // Send email notification to client
                         try {
                             if ($client->user->email) {
                                 Mail::to($client->user->email)->send(new AppointmentAcceptedMail($appointment));
+                                Log::info('Appointment acceptance email sent', [
+                                    'client_email' => $client->user->email
+                                ]);
                             }
                         } catch (\Exception $e) {
-                            Log::error('Failed to send appointment acceptance email: ' . $e->getMessage());
+                            Log::error('Failed to send appointment acceptance email', [
+                                'client_email' => $client->user->email ?? 'unknown',
+                                'error' => $e->getMessage()
+                            ]);
                         }
                     } else {
                         Log::warning('Appointment notification: Client user not found', [
                             'appointment_id' => $appointment->id,
                             'client_id' => $appointment->client_id,
-                            'client_user_id' => $client->user_id ?? 'null'
+                            'client_user_id' => $client->user_id ?? 'null',
+                            'has_client_user' => isset($client->user)
                         ]);
                     }
                 } else {
                     Log::warning('Appointment notification: Client not found', [
                         'appointment_id' => $appointment->id,
-                        'client_id' => $appointment->client_id ?? 'null'
+                        'client_id' => $appointment->client_id ?? 'null',
+                        'has_client' => isset($appointment->client)
                     ]);
                 }
             } catch (\Exception $e) {
-                Log::error('Failed to create appointment acceptance notification: ' . $e->getMessage(), [
+                Log::error('Failed to create appointment acceptance notification', [
                     'appointment_id' => $appointment->id,
-                    'error' => $e->getTraceAsString()
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
             }
         }

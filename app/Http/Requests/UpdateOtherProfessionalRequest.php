@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class StoreNurseRequest extends FormRequest
+class UpdateOtherProfessionalRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,14 +22,13 @@ class StoreNurseRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'=>'required|integer',
-            'license_number'=>'required|string', 
-            'med_school'=>'required|string', 
-            'specialization'=>'required|string',
-            'grad_year'=>'required',   
-            'degree_file'=>'',
-            'signature'=>'',
-            'id_card'=>'',
+            'user_id'=>'sometimes|integer',
+            'professional_type'=>'sometimes|string',
+            'license_number'=>'sometimes|string', 
+            'med_school'=>'sometimes|string', 
+            'specialization'=>'sometimes|string',
+            'grad_year'=>'sometimes|integer',   
+            'degree_file'=>'nullable|string',
         ];
     }
 }
