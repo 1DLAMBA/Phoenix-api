@@ -43,29 +43,33 @@ class MedicalRecordController extends Controller
             $medical_record = MedicalRecord::create($validateData);
             $medical_record->save();
 
-            // Load relationships
-            $medical_record->load('client.user', 'doctor.user');
+            // Load relationships - handle both doctor and other_professional
+            $medical_record->load('client.user', 'doctor.user', 'otherProfessional.user');
 
             // Create notification for client about medical record creation
             if ($medical_record->client && $medical_record->client->user) {
-                $doctorName = $medical_record->doctor && $medical_record->doctor->user 
-                    ? $medical_record->doctor->user->name 
-                    : 'Your doctor';
+                // Determine which professional (doctor or other_professional)
+                $professional = $medical_record->doctor ?? $medical_record->otherProfessional;
+                $professionalName = $professional && $professional->user 
+                    ? $professional->user->name 
+                    : 'Your healthcare provider';
                 
                 $notification = Notification::create([
                     'user_id' => $medical_record->client->user->id,
                     'type' => 'medical_record_created',
                     'title' => 'New Medical Record',
-                    'message' => $doctorName . ' has created a new medical record for you (Record #' . $medical_record->record_number . ')',
+                    'message' => $professionalName . ' has created a new medical record for you (Record #' . $medical_record->record_number . ')',
                     'related_id' => $medical_record->id,
                     'related_type' => 'MedicalRecord',
                 ]);
 
-                // Broadcast the notification in real-time
-                try {
-                    event(new NotificationSent($notification));
-                } catch (\Exception $e) {
-                    Log::error('Failed to broadcast medical record notification: ' . $e->getMessage());
+                // Broadcast the notification in real-time (ensure notification is saved before broadcasting)
+                if ($notification->id) {
+                    try {
+                        event(new NotificationSent($notification));
+                    } catch (\Exception $e) {
+                        Log::error('Failed to broadcast medical record notification: ' . $e->getMessage());
+                    }
                 }
                 
                 // Send email notification to client
@@ -132,7 +136,7 @@ class MedicalRecordController extends Controller
     public function getClientRecord($client_id)
     {
         //
-        $clientMedRec = MedicalRecord::Where('client_id', $client_id)->with('doctor.user','client.user')->get();
+        $clientMedRec = MedicalRecord::Where('client_id', $client_id)->with('doctor.user', 'otherProfessional.user', 'client.user')->get();
         return response()->json([
             'record' => $clientMedRec
                     ]);

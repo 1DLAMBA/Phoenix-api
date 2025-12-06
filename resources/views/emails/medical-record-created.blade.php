@@ -143,8 +143,18 @@
                 </div>
                 
                 <div class="info-row">
-                    <div class="info-label">Doctor</div>
-                    <div class="info-value">Dr. {{ $doctor->user->name }}</div>
+                    <div class="info-label">Healthcare Provider</div>
+                    <div class="info-value">
+                        @if($professional)
+                            @if($doctor)
+                                Dr. {{ $professional->user->name }}
+                            @else
+                                {{ $professional->user->name }}
+                            @endif
+                        @else
+                            N/A
+                        @endif
+                    </div>
                 </div>
                 
                 <div class="info-row">
@@ -199,6 +209,8 @@
     </div>
 </body>
 </html>
+
+
 
 
 

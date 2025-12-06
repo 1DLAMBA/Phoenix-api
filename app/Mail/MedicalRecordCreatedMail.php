@@ -38,12 +38,19 @@ class MedicalRecordCreatedMail extends Mailable
      */
     public function content(): Content
     {
+        // Load relationships - handle both doctor and other_professional
+        $this->medicalRecord->load('doctor.user', 'otherProfessional.user', 'client.user');
+        
+        // Determine which professional (doctor or other_professional)
+        $professional = $this->medicalRecord->doctor ?? $this->medicalRecord->otherProfessional;
+        
         return new Content(
             view: 'emails.medical-record-created',
             with: [
                 'medicalRecord' => $this->medicalRecord,
-                'doctor' => $this->medicalRecord->doctor->load('user'),
-                'client' => $this->medicalRecord->client->load('user'),
+                'professional' => $professional,
+                'doctor' => $this->medicalRecord->doctor, // Keep for backward compatibility
+                'client' => $this->medicalRecord->client,
             ],
         );
     }
@@ -58,6 +65,8 @@ class MedicalRecordCreatedMail extends Mailable
         return [];
     }
 }
+
+
 
 
 

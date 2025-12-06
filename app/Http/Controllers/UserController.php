@@ -102,7 +102,7 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::with('doctors', 'nurses', 'clients', 'otherProfessionals', 'clients.appointments.doctor.user')->findorfail($id);
+        $user = User::with('doctors', 'nurses', 'clients', 'otherProfessionals', 'clients.appointments.otherProfessional.user','clients.appointments.doctor.user')->findorfail($id);
         return response()->json([
             'user' => $user
         ]);

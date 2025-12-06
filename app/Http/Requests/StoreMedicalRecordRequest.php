@@ -23,7 +23,8 @@ class StoreMedicalRecordRequest extends FormRequest
     {
         return [
             'client_id'=> 'required|integer',
-            'assigned_doctor_id' => 'required|integer',
+            'assigned_doctor_id' => 'nullable|integer|required_without:other_professional_id',
+            'other_professional_id' => 'nullable|integer|required_without:assigned_doctor_id',
             'record_number'=> 'required|string',
             'diagnosis'=> 'required|string',
             'past_diagnosis'=> 'string',
