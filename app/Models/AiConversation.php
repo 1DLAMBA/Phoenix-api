@@ -15,6 +15,10 @@ class AiConversation extends Model
         'model',
         'system_prompt',
         'last_message',
+        'token_count',
+        'query_type',
+        'temperature_used',
+        'model_version',
     ];
 
     public function user()

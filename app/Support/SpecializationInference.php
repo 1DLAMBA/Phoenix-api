@@ -83,5 +83,47 @@ class SpecializationInference
         }
         return null;
     }
+    
+    /**
+     * Classify query type for temperature adjustment
+     * Returns: 'appointment', 'medical', or 'general'
+     */
+    public static function classifyQueryType(?string $text): string
+    {
+        if (empty($text)) {
+            return 'general';
+        }
+        
+        $lower = strtolower($text);
+        
+        // Appointment-related keywords
+        $appointmentKeywords = [
+            'appointment', 'schedule', 'book', 'cancel', 'reschedule',
+            'when is my', 'what time', 'next appointment', 'upcoming appointment',
+            'do i have an appointment', 'appointment with', 'set up appointment'
+        ];
+        
+        foreach ($appointmentKeywords as $keyword) {
+            if (strpos($lower, $keyword) !== false) {
+                return 'appointment';
+            }
+        }
+        
+        // Medical-related keywords
+        $medicalKeywords = [
+            'symptom', 'pain', 'ache', 'diagnosis', 'treatment', 'medicine', 'medication',
+            'disease', 'illness', 'condition', 'should i take', 'what medication',
+            'what should i do for', 'how to treat', 'side effect', 'dosage',
+            'prescription', 'medical advice', 'health advice', 'cure', 'therapy'
+        ];
+        
+        foreach ($medicalKeywords as $keyword) {
+            if (strpos($lower, $keyword) !== false) {
+                return 'medical';
+            }
+        }
+        
+        return 'general';
+    }
 }
 

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('professional_type'); // e.g., "Public Health", "Physiologist", etc.
-            $table->string('license_number');
+            $table->string('license_number')->nullable(); // Optional for other professionals
             $table->string('med_school');
             $table->string('specialization');
             $table->integer('grad_year');

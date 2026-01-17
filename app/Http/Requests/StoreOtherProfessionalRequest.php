@@ -24,7 +24,7 @@ class StoreOtherProfessionalRequest extends FormRequest
         return [
             'user_id'=>'required|integer',
             'professional_type'=>'required|string',
-            'license_number'=>'required|string', 
+            'license_number'=>'nullable|string', // Optional for other professionals
             'med_school'=>'required|string', 
             'specialization'=>'required|string',
             'grad_year'=>'required',   
