@@ -8,6 +8,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\FileUploadController;
 use App\Http\Controllers\GroqController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\MedicalRecordController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NotificationController;
@@ -110,6 +111,9 @@ Route::post('/messages/seen', [MessageController::class, 'markAsSeen']);
 Route::post('/messages/history', [MessageController::class, 'getMessageHistory']);
 Route::get('/messages/getConvo/{userId}', [ConversationController::class, 'getConversations']);
 Route::post('/groq', [GroqController::class, 'query']);
+
+// *****CONTACT*****
+Route::post('/contact/send', [ContactController::class, 'send']);
 
 // *****NOTIFICATION*****
 Route::get('/notifications', [NotificationController::class, 'index']);
