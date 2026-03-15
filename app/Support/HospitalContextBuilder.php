@@ -62,6 +62,10 @@ class HospitalContextBuilder
                 $context['providers'] = $this->buildDoctorSuggestions($user, null, $userMessage);
             }
 
+            $context['doctors_directory'] = $this->buildDoctorDirectory();
+            $context['nurses_directory'] = $this->buildNurseDirectory();
+            $context['professionals_directory'] = $this->buildOtherProfessionalDirectory();
+
             if (!$isGeneral) {
                 $context['memory'] = $this->buildConversationMemory($user);
             }
@@ -319,6 +323,31 @@ class HospitalContextBuilder
                 $parts[] = "PROVIDERS_MATCHED: none";
             }
             $parts[] = "DATA_BOUNDARY_PROVIDERS: These are the only matched providers. Do not mention unlisted providers.";
+        }
+
+        if (!empty($context['doctors_directory'])) {
+            $parts[] = "DOCTORS_DIRECTORY (all doctors in the system):";
+            foreach ($context['doctors_directory'] as $idx => $doc) {
+                $parts[] = sprintf("%d) Dr. %s | %s", $idx + 1, $doc['name'], $doc['specialization']);
+            }
+        }
+
+        if (!empty($context['nurses_directory'])) {
+            $parts[] = "NURSES_DIRECTORY (all nurses in the system):";
+            foreach ($context['nurses_directory'] as $idx => $nurse) {
+                $parts[] = sprintf("%d) Nurse %s | %s", $idx + 1, $nurse['name'], $nurse['specialization']);
+            }
+        }
+
+        if (!empty($context['professionals_directory'])) {
+            $parts[] = "OTHER_PROFESSIONALS_DIRECTORY (all other professionals in the system):";
+            foreach ($context['professionals_directory'] as $idx => $pro) {
+                $parts[] = sprintf("%d) %s | %s | %s", $idx + 1, $pro['name'], $pro['type'], $pro['specialization']);
+            }
+        }
+
+        if (!empty($context['doctors_directory']) || !empty($context['nurses_directory']) || !empty($context['professionals_directory'])) {
+            $parts[] = "DATA_BOUNDARY_DIRECTORY: Use these directories to recommend relevant doctors, nurses, or professionals when the client mentions any illness, symptom, or health concern. Match by specialization.";
         }
 
         if (isset($context['admin_summary'])) {
@@ -1053,6 +1082,56 @@ class HospitalContextBuilder
     }
 
     /**
+     * Compact directory of all doctors: name + specialization only.
+     * Always included for clients so the AI can recommend by illness.
+     */
+    private function buildDoctorDirectory(): array
+    {
+        return Doctor::with('user')
+            ->get()
+            ->filter(fn($d) => $d->user !== null)
+            ->map(fn($d) => [
+                'name' => $d->user->name,
+                'specialization' => $d->specialization,
+            ])
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Compact directory of all nurses: name + specialization only.
+     */
+    private function buildNurseDirectory(): array
+    {
+        return Nurse::with('user')
+            ->get()
+            ->filter(fn($n) => $n->user !== null)
+            ->map(fn($n) => [
+                'name' => $n->user->name,
+                'specialization' => $n->specialization ?: 'General Nursing',
+            ])
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Compact directory of all other professionals: name, type + specialization.
+     */
+    private function buildOtherProfessionalDirectory(): array
+    {
+        return OtherProfessional::with('user')
+            ->get()
+            ->filter(fn($p) => $p->user !== null)
+            ->map(fn($p) => [
+                'name' => $p->user->name,
+                'type' => $p->professional_type ?? 'Professional',
+                'specialization' => $p->specialization ?: ($p->professional_type ?? 'General'),
+            ])
+            ->values()
+            ->toArray();
+    }
+
+    /**
      * Build admin summary context.
      */
     private function buildAdminSummary(): array
@@ -1103,6 +1182,10 @@ class HospitalContextBuilder
             'doctor', 'nurse', 'specialist', 'physio', 'therapy', 'counsel',
         ]);
 
+        if (!$flags['needs_suggestions'] && SpecializationInference::infer($message) !== null) {
+            $flags['needs_suggestions'] = true;
+        }
+
         return $flags;
     }
 
@@ -1131,7 +1214,7 @@ class HospitalContextBuilder
     private function buildSystemInstructions(string $role, array $flags): string
     {
         $roleInstruction = match ($role) {
-            'client' => 'Role focus: help with appointments, provider selection, and record understanding; never diagnose.',
+            'client' => 'Role focus: help with appointments, provider selection, and record understanding; never diagnose. When the client mentions any illness, symptom, or health concern, proactively suggest relevant doctors, nurses, or other professionals from the provider directories by matching their specialization to the condition described.',
             'doctor' => 'Role focus: support schedule, clients, and records accurately.',
             'nurse' => 'Role focus: support assigned clients, assignments, and care coordination.',
             'other_professional' => 'Role focus: support appointments, clients, and care coordination like a clinical professional.',
