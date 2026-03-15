@@ -43,7 +43,10 @@ class MedicalRecordCreatedMail extends Mailable
         
         // Determine which professional (doctor or other_professional)
         $professional = $this->medicalRecord->doctor ?? $this->medicalRecord->otherProfessional;
-        
+
+        $frontendUrl = rtrim(config('app.frontend_url'), '/');
+        $actionUrl = $frontendUrl . '/panel/client-panel';
+
         return new Content(
             view: 'emails.medical-record-created',
             with: [
@@ -51,6 +54,7 @@ class MedicalRecordCreatedMail extends Mailable
                 'professional' => $professional,
                 'doctor' => $this->medicalRecord->doctor, // Keep for backward compatibility
                 'client' => $this->medicalRecord->client,
+                'actionUrl' => $actionUrl,
             ],
         );
     }

@@ -83,6 +83,17 @@
             font-size: 14px;
             line-height: 1.6;
         }
+        .action-button {
+            display: inline-block;
+            margin: 8px;
+            padding: 14px 28px;
+            background-color: #17224d;
+            color: #ffffff !important;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            border-radius: 6px;
+        }
         .footer-text {
             margin-top: 30px;
             font-size: 14px;
@@ -184,6 +195,15 @@
                 @endif
             </div>
             
+            @if(!empty($actionUrl))
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{ $actionUrl }}" class="action-button" target="_blank" rel="noopener">View Appointments</a>
+                @if(!empty($doctorPanelUrl))
+                <a href="{{ $doctorPanelUrl }}" class="action-button" target="_blank" rel="noopener">Go to Dashboard</a>
+                @endif
+            </p>
+            @endif
+
             <div class="footer-text">
                 Please log in to your dashboard to view and manage this appointment.
             </div>

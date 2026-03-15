@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\OtpVerificationMail;
+use App\Mail\WelcomeMail;
 use Carbon\Carbon;
 
 
@@ -52,8 +53,15 @@ class UserController extends Controller
             $professionalTypes = ['doctor', 'nurse', 'other_professional'];
             if (in_array($validate['user_type'], $professionalTypes)) {
                 $this->generateAndSendOtp($user);
+            } else {
+                // No OTP required — sign-up is complete; send welcome email
+                try {
+                    Mail::to($user->email)->send(new WelcomeMail($user));
+                } catch (\Exception $e) {
+                    Log::error('Failed to send welcome email: ' . $e->getMessage());
+                }
             }
-            
+
             return response()->json([
                 'success' => 'Registered!',
                 'user' => $user,
@@ -194,6 +202,13 @@ class UserController extends Controller
         $user->email_verification_otp = null;
         $user->otp_expires_at = null;
         $user->save();
+
+        // Sign-up is complete; send welcome email
+        try {
+            Mail::to($user->email)->send(new WelcomeMail($user));
+        } catch (\Exception $e) {
+            Log::error('Failed to send welcome email: ' . $e->getMessage());
+        }
 
         return response()->json([
             'success' => 'Email verified successfully',

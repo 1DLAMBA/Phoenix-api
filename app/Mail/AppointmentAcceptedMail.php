@@ -54,7 +54,11 @@ class AppointmentAcceptedMail extends Mailable
         if ($client && !$client->relationLoaded('user')) {
             $client->load('user');
         }
-        
+
+        $frontendUrl = rtrim(config('app.frontend_url'), '/');
+        $actionUrl = $frontendUrl . '/panel/client-appointment';
+        $clientPanelUrl = $frontendUrl . '/panel/client-panel';
+
         return new Content(
             view: 'emails.appointment-accepted',
             with: [
@@ -62,6 +66,8 @@ class AppointmentAcceptedMail extends Mailable
                 'professional' => $professional,
                 'doctor' => $professional, // Keep for backward compatibility with template
                 'client' => $client,
+                'actionUrl' => $actionUrl,
+                'clientPanelUrl' => $clientPanelUrl,
             ],
         );
     }
