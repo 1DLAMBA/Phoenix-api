@@ -33,7 +33,10 @@ class SpecializationAliases
             'vascular surgery' => ['Vascular Surgery', 'Vascular Surgeon'],
             'geriatrics' => ['Geriatrics', 'Geriatrician', 'Elderly Care'],
             'sports medicine' => ['Sports Medicine', 'Sports Physician'],
-            'dentistry' => ['Dentistry', 'Dentist', 'Dental']
+            'dentistry' => ['Dentistry', 'Dentist', 'Dental'],
+            'physiotherapy' => ['Physiotherapy', 'Physio', 'Physical Therapy', 'Rehabilitation'],
+            'counseling' => ['Counseling', 'Counsellor', 'Counselor', 'Therapist'],
+            'public health' => ['Public Health', 'Public Health Officer', 'Community Health', 'Epidemiology']
         ];
 
         return $map[$spec] ?? [$specialization];

@@ -76,6 +76,9 @@ class SpecializationInference
             // Other
             'elderly' => 'Geriatrics', 'dementia' => 'Geriatrics', 'alzheimer' => 'Geriatrics',
             'sports injury' => 'Sports Medicine', 'athlete' => 'Sports Medicine', 'concussion' => 'Sports Medicine',
+            'physio' => 'Physiotherapy', 'physical therapy' => 'Physiotherapy', 'rehab' => 'Physiotherapy',
+            'counsel' => 'Counseling', 'therapy session' => 'Counseling', 'behavioral therapy' => 'Counseling',
+            'public health' => 'Public Health', 'community health' => 'Public Health', 'epidemiology' => 'Public Health',
         ];
         $lower = strtolower($text);
         foreach ($map as $needle => $spec) {
@@ -96,6 +99,37 @@ class SpecializationInference
         
         $lower = strtolower($text);
         
+        // Explicit non-medical support categories first
+        $assignmentKeywords = [
+            'assignment', 'assigned', 'care team', 'my nurse', 'my doctor', 'my team'
+        ];
+
+        foreach ($assignmentKeywords as $keyword) {
+            if (strpos($lower, $keyword) !== false) {
+                return 'assignment';
+            }
+        }
+
+        $notificationKeywords = [
+            'notification', 'notifications', 'alert', 'alerts', 'unread', 'update'
+        ];
+
+        foreach ($notificationKeywords as $keyword) {
+            if (strpos($lower, $keyword) !== false) {
+                return 'notification';
+            }
+        }
+
+        $recordKeywords = [
+            'record', 'records', 'medical history', 'past diagnosis', 'treatment history'
+        ];
+
+        foreach ($recordKeywords as $keyword) {
+            if (strpos($lower, $keyword) !== false) {
+                return 'records';
+            }
+        }
+
         // Appointment-related keywords
         $appointmentKeywords = [
             'appointment', 'schedule', 'book', 'cancel', 'reschedule',

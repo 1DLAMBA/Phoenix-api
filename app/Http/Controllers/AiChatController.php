@@ -93,6 +93,9 @@ class AiChatController extends Controller
                     $query->with('user');
                 }
             ])->findOrFail($request->user_id);
+            if (!$user instanceof User) {
+                throw new \RuntimeException('Failed to load user context');
+            }
 
             // Classify query type for temperature adjustment
             $queryType = SpecializationInference::classifyQueryType($userMessage);
@@ -238,6 +241,9 @@ class AiChatController extends Controller
     {
         return match($queryType) {
             'appointment' => 0.3,  // Very precise for scheduling
+            'assignment' => 0.3,   // Precise for care-team facts
+            'notification' => 0.3, // Precise for unread counts and status
+            'records' => 0.4,      // Conservative for records
             'medical' => 0.5,      // Conservative for medical advice
             'general' => 0.7,      // Natural for general conversation
             default => 0.7

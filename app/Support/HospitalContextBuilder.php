@@ -11,6 +11,9 @@ use App\Models\Appointment;
 use App\Models\MedicalRecord;
 use App\Models\Message;
 use App\Models\AiConversation;
+use App\Models\Assignments;
+use App\Models\Notification;
+use App\Models\Admin;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 
@@ -24,79 +27,116 @@ class HospitalContextBuilder
     public function buildForUser(User $user, ?string $userMessage = null, ?int $conversationId = null): array
     {
         $this->currentConversationId = $conversationId;
+        $flags = $this->resolveQueryFlags($userMessage);
 
         $context = [
             'user' => $this->buildUserProfile($user),
+            'query_type' => $flags['query_type'],
         ];
 
-        // Add role-specific context
         if ($user->user_type === 'client' && $user->clients) {
             $client = $user->clients;
+            $isGeneral = $flags['query_type'] === 'general';
 
-            // Medical context (only if health-related)
-            if ($this->isHealthRelated($userMessage)) {
+            if ($flags['needs_medical']) {
                 $context['medical'] = $this->buildMedicalContext($client);
             }
 
-            // Appointment context
-            $context['appointments'] = $this->buildAppointmentContext($client);
+            if ($flags['needs_appointments']) {
+                $context['appointments'] = $this->buildAppointmentContext($client);
+            } else {
+                $context['appointment_summary'] = $this->buildClientAppointmentSummary($client);
+            }
 
-            // Relationship context
             $context['relationships'] = $this->buildRelationshipContext($user, $client);
 
-            // Conversation memory
-            $context['memory'] = $this->buildConversationMemory($user);
+            if ($flags['needs_assignments']) {
+                $context['assignments'] = $this->buildAssignmentContext($user);
+            }
+
+            if ($flags['needs_notifications']) {
+                $context['notifications'] = $this->buildNotificationSummary($user);
+            }
+
+            if ($flags['needs_suggestions']) {
+                $context['providers'] = $this->buildDoctorSuggestions($user, null, $userMessage);
+            }
+
+            if (!$isGeneral) {
+                $context['memory'] = $this->buildConversationMemory($user);
+            }
         } elseif ($user->user_type === 'doctor' && $user->doctors) {
             $doctor = $user->doctors;
-            
-            // Doctor-specific context
+
             $context['doctor_profile'] = $this->buildDoctorProfile($doctor);
-            $context['doctor_appointments'] = $this->buildDoctorAppointments($doctor);
-            $context['doctor_clients'] = $this->buildDoctorClients($doctor);
-            $context['doctor_records'] = $this->buildDoctorMedicalRecords($doctor);
-            
-            // Conversation memory
-            $context['memory'] = $this->buildConversationMemory($user);
+
+            if ($flags['needs_appointments']) {
+                $context['doctor_appointments'] = $this->buildDoctorAppointments($doctor);
+            } else {
+                $context['doctor_schedule_summary'] = $this->buildDoctorAppointmentSummary($doctor);
+            }
+
+            $context['doctor_clients'] = $this->buildDoctorClients($doctor, $flags['query_type'] !== 'general');
+
+            if ($flags['needs_records']) {
+                $context['doctor_records'] = $this->buildDoctorMedicalRecords($doctor);
+            }
+
+            if ($flags['needs_assignments']) {
+                $context['assignments'] = $this->buildAssignmentContext($user);
+            }
+
+            if ($flags['needs_notifications']) {
+                $context['notifications'] = $this->buildNotificationSummary($user);
+            }
         } elseif ($user->user_type === 'nurse' && $user->nurses) {
             $nurse = $user->nurses;
-            
-            // Nurse-specific context
+
             $context['nurse_profile'] = $this->buildNurseProfile($nurse);
-            $context['nurse_clients'] = $this->buildNurseClients($nurse);
-            
-            // Conversation memory
-            $context['memory'] = $this->buildConversationMemory($user);
+            $context['nurse_clients'] = $this->buildNurseClients($nurse, $flags['query_type'] !== 'general');
+
+            if ($flags['needs_assignments']) {
+                $context['assignments'] = $this->buildAssignmentContext($user);
+            }
+
+            if ($flags['needs_notifications']) {
+                $context['notifications'] = $this->buildNotificationSummary($user);
+            }
         } elseif ($user->user_type === 'other_professional') {
-            // Ensure otherProfessionals relationship is loaded
             if (!$user->relationLoaded('otherProfessionals')) {
                 $user->load('otherProfessionals');
             }
-            
+
             $professional = $user->otherProfessionals;
 
             if ($professional) {
-                // Professional-specific context
                 $context['professional_profile'] = $this->buildOtherProfessionalProfile($professional);
-                $context['professional_appointments'] = $this->buildOtherProfessionalAppointments($professional);
-                $context['professional_clients'] = $this->buildOtherProfessionalClients($professional);
+
+                if ($flags['needs_appointments']) {
+                    $context['professional_appointments'] = $this->buildOtherProfessionalAppointments($professional);
+                } else {
+                    $context['professional_schedule_summary'] = $this->buildOtherProfessionalAppointmentSummary($professional);
+                }
+
+                $context['professional_clients'] = $this->buildOtherProfessionalClients($professional, $flags['query_type'] !== 'general');
+
+                if ($flags['needs_records']) {
+                    $context['professional_records'] = $this->buildOtherProfessionalMedicalRecords($professional);
+                }
             } else {
-                // Handle case where professional record doesn't exist yet
                 $context['professional_profile'] = [];
                 $context['professional_appointments'] = ['upcoming' => [], 'upcoming_count' => 0, 'today_count' => 0];
                 $context['professional_clients'] = ['count' => 0, 'recent' => []];
             }
-            
-            // Conversation memory
-            $context['memory'] = $this->buildConversationMemory($user);
+
+            if ($flags['needs_notifications']) {
+                $context['notifications'] = $this->buildNotificationSummary($user);
+            }
+        } elseif ($user->user_type === 'admin') {
+            $context['admin_summary'] = $this->buildAdminSummary();
         }
 
-        // Doctor suggestions (only for clients)
-        if ($user->user_type === 'client') { 
-            $context['doctors'] = $this->buildDoctorSuggestions($user, null, $userMessage);
-        }
-
-        // System instructions
-        $context['instructions'] = $this->buildSystemInstructions();
+        $context['instructions'] = $this->buildSystemInstructions($user->user_type, $flags);
 
         return $context;
     }
@@ -107,204 +147,189 @@ class HospitalContextBuilder
     public function formatSystemPrompt(array $context): string
     {
         $parts = [];
-
-        // Add current date/time context FIRST
         $parts[] = $this->getCurrentDateTimeContext();
-        $parts[] = ""; // Blank line for readability
+        $parts[] = '';
 
-        // Start with clear statement about the user
         $user = $context['user'];
         $role = $user['role'];
-        
-        if ($role === 'doctor') {
-            $doc = $context['doctor_profile'] ?? [];
-            $specialization = $doc['specialization'] ?? 'Unknown';
-            $parts[] = "The USER you are talking to is Dr. {$user['name']}, a doctor specializing in {$specialization}.";
-        } elseif ($role === 'nurse') {
-            $nurse = $context['nurse_profile'] ?? [];
-            $specialization = $nurse['specialization'] ?? 'Unknown';
-            $parts[] = "The USER you are talking to is {$user['name']}, a nurse specializing in {$specialization}.";
-        } elseif ($role === 'other_professional') {
-            $prof = $context['professional_profile'] ?? [];
-            $type = $prof['professional_type'] ?? 'Professional';
-            $specialization = $prof['specialization'] ?? 'General';
-            $parts[] = "The USER you are talking to is {$user['name']}, a {$type} specializing in {$specialization}.";
-        } else {
-            $parts[] = "The USER you are talking to is {$user['name']}, a client/patient.";
-            if (isset($user['age'])) {
-                $parts[] = "The user is {$user['age']} years old.";
-            }
-        }
+        $parts[] = "USER: {$user['name']} | role={$role}" . (isset($user['age']) ? " | age={$user['age']}" : '');
 
-        // Medical context (if present - for clients)
         if (isset($context['medical'])) {
             $med = $context['medical'];
-            if (!empty($med['allergies'])) {
-                $parts[] = "The user has allergies: " . implode(', ', $med['allergies']);
-            }
-            if (!empty($med['recent'])) {
-                $parts[] = "The user's recent medical history: " . implode('; ', array_slice($med['recent'], 0, 2));
-            }
+            $parts[] = "MEDICAL: allergies=" . (!empty($med['allergies']) ? implode(', ', $med['allergies']) : 'none');
+            $parts[] = "MEDICAL_RECENT: " . (!empty($med['recent']) ? implode(' | ', array_slice($med['recent'], 0, 2)) : 'none');
+            $parts[] = "DATA_BOUNDARY_MEDICAL: This is the complete medical summary available.";
         }
 
-        // Appointments (enhanced with relative times - for clients)
         if (isset($context['appointments'])) {
             $apts = $context['appointments'];
-            
+            $parts[] = "APPOINTMENTS: upcoming_count=" . ($apts['upcoming_count'] ?? 0);
             if (!empty($apts['upcoming'])) {
-                $parts[] = "\nThe user has {$apts['upcoming_count']} upcoming appointment(s):";
-                
                 foreach (array_slice($apts['upcoming'], 0, 3) as $idx => $apt) {
-                    $providerLabel = $apt['provider_name'];
-                    $aptInfo = sprintf(
-                        "%d. %s at %s (%s) with %s (%s)",
+                    $parts[] = sprintf(
+                        "%d) %s, %s (%s) | %s, %s | %s | %s",
                         $idx + 1,
                         $apt['date'],
                         $apt['time'],
                         $apt['relative'],
-                        $providerLabel,
-                        $apt['provider_specialization']
+                        $apt['provider_name'],
+                        $apt['provider_specialization'],
+                        Str::limit($apt['symptoms'] ?? 'no symptoms provided', 40),
+                        $apt['status'] ?? 'unknown'
                     );
-                    
-                    if (!empty($apt['symptoms'])) {
-                        $aptInfo .= " - Reason: " . Str::limit($apt['symptoms'], 60);
-                    }
-                    
-                    $aptInfo .= " [Status: {$apt['status']}]";
-                    $parts[] = "   " . $aptInfo;
                 }
             } else {
-                $parts[] = "The user has NO upcoming appointments scheduled.";
+                $parts[] = "NO_APPOINTMENTS: No upcoming appointments were found.";
             }
-            
-            // Add recent past appointments for context
-            if (!empty($apts['past_recent'])) {
-                $lastApt = $apts['past_recent'][0];
-                $parts[] = "The user's last appointment was on {$lastApt['date']} ({$lastApt['relative']}) with {$lastApt['provider_name']}.";
-            }
+            $parts[] = "DATA_BOUNDARY_APPOINTMENTS: This is the complete appointment list. Do not reference unlisted appointments.";
+        } elseif (isset($context['appointment_summary'])) {
+            $summary = $context['appointment_summary'];
+            $parts[] = "APPOINTMENT_SUMMARY: upcoming={$summary['upcoming_count']} | today={$summary['today_count']}";
+            $parts[] = "DATA_BOUNDARY_APPOINTMENTS: Summary only. Do not infer specific appointment details.";
         }
 
-        // Doctor profile (for doctors) - make it clear these are the USER's details
         if (isset($context['doctor_profile'])) {
-            $doc = $context['doctor_profile'];
-            if (!empty($doc['availability'])) {
-                $parts[] = "The user's availability status: {$doc['availability']}.";
+            $parts[] = "DOCTOR_PROFILE: specialization=" . ($context['doctor_profile']['specialization'] ?? 'Unknown') .
+                " | availability=" . ($context['doctor_profile']['availability'] ?? 'Unknown');
+        }
+        if (isset($context['doctor_appointments'])) {
+            $appts = $context['doctor_appointments'];
+            $parts[] = "DOCTOR_APPOINTMENTS: upcoming={$appts['upcoming_count']} | today={$appts['today_count']}";
+            foreach (array_slice($appts['upcoming'] ?? [], 0, 3) as $idx => $apt) {
+                $parts[] = sprintf(
+                    "%d) %s, %s (%s) | patient=%s | %s | %s",
+                    $idx + 1,
+                    $apt['date'],
+                    $apt['time'],
+                    $apt['relative'],
+                    $apt['client'],
+                    Str::limit($apt['symptoms'] ?? 'no symptoms provided', 40),
+                    $apt['status'] ?? 'unknown'
+                );
             }
-            
-            // Always show appointment information for doctors
-            if (isset($context['doctor_appointments'])) {
-                $appts = $context['doctor_appointments'];
-                $upcomingCount = $appts['upcoming_count'] ?? 0;
-                
-                if ($upcomingCount > 0) {
-                    $parts[] = "\nThe user has {$upcomingCount} upcoming appointments";
-                    
-                    if (!empty($appts['today_count'])) {
-                        $parts[] = "({$appts['today_count']} today).";
-                    } else {
-                        $parts[] = "(none today).";
-                    }
-                    
-                    if (!empty($appts['upcoming'])) {
-                        $parts[] = "Next appointments:";
-                        foreach (array_slice($appts['upcoming'], 0, 3) as $idx => $apt) {
-                            $aptInfo = sprintf(
-                                "%d. %s at %s (%s) - Patient: %s",
-                                $idx + 1,
-                                $apt['date'],
-                                $apt['time'],
-                                $apt['relative'],
-                                $apt['client']
-                            );
-                            
-                            if (!empty($apt['symptoms'])) {
-                                $aptInfo .= " - Symptoms: " . Str::limit($apt['symptoms'], 60);
-                            }
-                            
-                            if (!empty($apt['status'])) {
-                                $aptInfo .= " [Status: {$apt['status']}]";
-                            }
-                            
-                            $parts[] = "   " . $aptInfo;
-                        }
-                    }
-                } else {
-                    $parts[] = "\nThe user has NO upcoming appointments scheduled.";
-                }
-            }
-            if (!empty($context['doctor_clients']['count'])) {
-                $parts[] = "The user has {$context['doctor_clients']['count']} assigned clients.";
-            }
-            if (!empty($context['doctor_records']['count'])) {
-                $parts[] = "The user has created {$context['doctor_records']['count']} medical records.";
-            }
+            $parts[] = "DATA_BOUNDARY_DOCTOR_APPOINTMENTS: This is the complete doctor appointment list.";
+        } elseif (isset($context['doctor_schedule_summary'])) {
+            $summary = $context['doctor_schedule_summary'];
+            $parts[] = "DOCTOR_SCHEDULE_SUMMARY: upcoming={$summary['upcoming_count']} | today={$summary['today_count']}";
+            $parts[] = "DATA_BOUNDARY_DOCTOR_APPOINTMENTS: Summary only. No detailed doctor appointments provided.";
         }
 
-        // Nurse profile (for nurses) - make it clear these are the USER's details
-        if (isset($context['nurse_profile'])) {
-            if (!empty($context['nurse_clients']['count'])) {
-                $parts[] = "The user has {$context['nurse_clients']['count']} assigned clients.";
-            }
-        }
-
-        // Other Professional profile
         if (isset($context['professional_profile'])) {
-            if (!empty($context['professional_appointments']['upcoming_count'])) {
-                $parts[] = "\nThe user has {$context['professional_appointments']['upcoming_count']} upcoming appointments";
-                
-                if (!empty($context['professional_appointments']['today_count'])) {
-                    $parts[] = "({$context['professional_appointments']['today_count']} today).";
-                } else {
-                    $parts[] = "(none today).";
-                }
-                
-                if (!empty($context['professional_appointments']['upcoming'])) {
-                    $parts[] = "Next appointments:";
-                    foreach (array_slice($context['professional_appointments']['upcoming'], 0, 3) as $idx => $apt) {
-                        $aptInfo = sprintf(
-                            "%d. %s at %s (%s) - Patient: %s",
-                            $idx + 1,
-                            $apt['date'],
-                            $apt['time'],
-                            $apt['relative'],
-                            $apt['client']
-                        );
-                        
-                        if (!empty($apt['symptoms'])) {
-                            $aptInfo .= " - Symptoms: " . Str::limit($apt['symptoms'], 60);
-                        }
-                        
-                        if (!empty($apt['status'])) {
-                            $aptInfo .= " [Status: {$apt['status']}]";
-                        }
-                        
-                        $parts[] = "   " . $aptInfo;
-                    }
-                }
+            $parts[] = "PROFESSIONAL_PROFILE: type=" . ($context['professional_profile']['professional_type'] ?? 'Unknown') .
+                " | specialization=" . ($context['professional_profile']['specialization'] ?? 'Unknown');
+        }
+        if (isset($context['professional_appointments'])) {
+            $appts = $context['professional_appointments'];
+            $parts[] = "PROFESSIONAL_APPOINTMENTS: upcoming={$appts['upcoming_count']} | today={$appts['today_count']}";
+            foreach (array_slice($appts['upcoming'] ?? [], 0, 3) as $idx => $apt) {
+                $parts[] = sprintf(
+                    "%d) %s, %s (%s) | patient=%s | %s | %s",
+                    $idx + 1,
+                    $apt['date'],
+                    $apt['time'],
+                    $apt['relative'],
+                    $apt['client'],
+                    Str::limit($apt['symptoms'] ?? 'no symptoms provided', 40),
+                    $apt['status'] ?? 'unknown'
+                );
             }
-
-            if (!empty($context['professional_clients']['count'])) {
-                $parts[] = "The user has {$context['professional_clients']['count']} assigned clients.";
-            }
+            $parts[] = "DATA_BOUNDARY_PROFESSIONAL_APPOINTMENTS: This is the complete professional appointment list.";
+        } elseif (isset($context['professional_schedule_summary'])) {
+            $summary = $context['professional_schedule_summary'];
+            $parts[] = "PROFESSIONAL_SCHEDULE_SUMMARY: upcoming={$summary['upcoming_count']} | today={$summary['today_count']}";
+            $parts[] = "DATA_BOUNDARY_PROFESSIONAL_APPOINTMENTS: Summary only. No detailed appointments provided.";
         }
 
-        // Assigned doctor (for clients)
+        if (isset($context['doctor_clients']['count'])) {
+            $parts[] = "DOCTOR_CLIENTS: count={$context['doctor_clients']['count']}";
+        }
+        if (isset($context['nurse_clients']['count'])) {
+            $parts[] = "NURSE_CLIENTS: count={$context['nurse_clients']['count']}";
+        }
+        if (isset($context['professional_clients']['count'])) {
+            $parts[] = "PROFESSIONAL_CLIENTS: count={$context['professional_clients']['count']}";
+        }
+
+        if (isset($context['doctor_records']['count'])) {
+            $parts[] = "DOCTOR_RECORDS: count={$context['doctor_records']['count']}";
+        }
+        if (isset($context['professional_records']['count'])) {
+            $parts[] = "PROFESSIONAL_RECORDS: count={$context['professional_records']['count']}";
+        }
+
         if (isset($context['relationships']['assigned_doctor'])) {
             $doc = $context['relationships']['assigned_doctor'];
-            $parts[] = "The user's assigned doctor is Dr. {$doc['name']} ({$doc['specialization']}).";
+            $parts[] = "RELATIONSHIP_DOCTOR: Dr. {$doc['name']} | {$doc['specialization']} | availability={$doc['availability']}";
+        }
+        if (isset($context['relationships']['assigned_nurse'])) {
+            $nurse = $context['relationships']['assigned_nurse'];
+            $parts[] = "RELATIONSHIP_NURSE: {$nurse['name']} | {$nurse['specialization']}";
+        }
+        if (!empty($context['relationships'])) {
+            $parts[] = "DATA_BOUNDARY_RELATIONSHIPS: Only listed care-team relationships exist.";
         }
 
-        // Available doctors (concise - only for clients)
-        if (!empty($context['doctors'])) {
-            $doctorList = array_map(function($d) {
-                $marker = ($d['is_assigned'] ?? false) ? ' [ASSIGNED]' : '';
-                return "Dr. {$d['name']} ({$d['specialization']}){$marker}";
-            }, array_slice($context['doctors'], 0, 5));
-            $parts[] = "Available doctors in the system: " . implode(', ', $doctorList);
+        if (isset($context['assignments'])) {
+            $assignment = $context['assignments'];
+            $parts[] = "ASSIGNMENTS: count={$assignment['count']}";
+            foreach (array_slice($assignment['recent'] ?? [], 0, 3) as $idx => $item) {
+                $parts[] = sprintf(
+                    "%d) doctor=%s | nurse=%s | client=%s | status=%s | note=%s",
+                    $idx + 1,
+                    $item['doctor'] ?? 'N/A',
+                    $item['nurse'] ?? 'N/A',
+                    $item['client'] ?? 'N/A',
+                    $item['status'] ?? 'unknown',
+                    Str::limit($item['message'] ?? 'none', 40)
+                );
+            }
+            $parts[] = "DATA_BOUNDARY_ASSIGNMENTS: This is the complete assignment data available.";
         }
 
-        // Instructions
-        $parts[] = "\n" . $context['instructions'];
+        if (isset($context['notifications'])) {
+            $notify = $context['notifications'];
+            $parts[] = "NOTIFICATIONS: unread={$notify['unread_count']} | total={$notify['total_count']}";
+            if (!empty($notify['recent_titles'])) {
+                $parts[] = "NOTIFICATION_RECENT: " . implode(' | ', array_slice($notify['recent_titles'], 0, 3));
+            }
+            $parts[] = "DATA_BOUNDARY_NOTIFICATIONS: Do not invent notifications outside this list.";
+        }
+
+        if (array_key_exists('providers', $context)) {
+            if (!empty($context['providers'])) {
+                $parts[] = "PROVIDERS_MATCHED: count=" . count($context['providers']);
+                foreach (array_slice($context['providers'], 0, 5) as $idx => $provider) {
+                    $providerType = $provider['provider_type'] ?? 'unknown';
+                    $prefix = match ($providerType) {
+                        'doctor' => 'Dr. ',
+                        'nurse' => 'Nurse ',
+                        default => '',
+                    };
+                    $parts[] = sprintf(
+                        "%d) %s%s | %s | type=%s%s",
+                        $idx + 1,
+                        $prefix,
+                        $provider['name'],
+                        $provider['specialization'] ?? 'General',
+                        $providerType,
+                        ($provider['is_assigned'] ?? false) ? ' | ASSIGNED' : ''
+                    );
+                }
+            } else {
+                $parts[] = "PROVIDERS_MATCHED: none";
+            }
+            $parts[] = "DATA_BOUNDARY_PROVIDERS: These are the only matched providers. Do not mention unlisted providers.";
+        }
+
+        if (isset($context['admin_summary'])) {
+            $admin = $context['admin_summary'];
+            $parts[] = "ADMIN_SUMMARY: users={$admin['users_count']} | clients={$admin['clients_count']} | doctors={$admin['doctors_count']} | nurses={$admin['nurses_count']} | professionals={$admin['other_professionals_count']} | appointments_today={$admin['appointments_today']} | upcoming_appointments={$admin['upcoming_appointments']}";
+            $parts[] = "DATA_BOUNDARY_ADMIN: This is a summary only. Do not infer additional admin metrics.";
+        }
+
+        $parts[] = "END_OF_USER_DATA: Everything above is the complete available system data. Never invent, assume, exaggerate, or fabricate doctors, appointments, notifications, or records.";
+        $parts[] = "";
+        $parts[] = $context['instructions'];
 
         return implode("\n", $parts);
     }
@@ -396,12 +421,9 @@ class HospitalContextBuilder
 
                 return [
                     'id' => $apt->id,
-                    'date' => $aptDate->format('l, F j, Y'), // e.g., "Monday, January 10, 2026"
-                    'time' => $aptDate->format('g:i A'), // e.g., "2:30 PM"
-                    'datetime_full' => $aptDate->format('Y-m-d H:i:s'),
+                    'date' => $aptDate->format('D M j Y'),
+                    'time' => $aptDate->format('g:i A'),
                     'relative' => $this->getRelativeTime($aptDate, $now),
-                    'days_until' => $now->diffInDays($aptDate),
-                    'hours_until' => $now->diffInHours($aptDate),
                     'provider_name' => $providerName,
                     'provider_specialization' => $providerSpec,
                     'symptoms' => $apt->symptoms,
@@ -437,7 +459,7 @@ class HospitalContextBuilder
                 }
 
                 return [
-                    'date' => $aptDate->format('l, F j, Y'),
+                    'date' => $aptDate->format('D M j Y'),
                     'time' => $aptDate->format('g:i A'),
                     'relative' => $aptDate->diffForHumans($now),
                     'provider_name' => $providerName,
@@ -474,6 +496,18 @@ class HospitalContextBuilder
             }
         }
 
+        // Assigned nurse
+        if ($client->assigned_nurse_id) {
+            $nurse = Nurse::with('user')->find($client->assigned_nurse_id);
+            if ($nurse && $nurse->user) {
+                $context['assigned_nurse'] = [
+                    'id' => $nurse->id,
+                    'name' => $nurse->user->name,
+                    'specialization' => $nurse->specialization,
+                ];
+            }
+        }
+
         // Recent messages with assigned doctor (if exists)
         if (isset($context['assigned_doctor'])) {
             $doctor = Doctor::with('user')->find($context['assigned_doctor']['id']);
@@ -492,6 +526,28 @@ class HospitalContextBuilder
 
                 if ($recentMessages->isNotEmpty()) {
                     $context['recent_messages'] = $recentMessages->count() . ' recent messages';
+                }
+            }
+        }
+
+        // Recent messages with assigned nurse (if exists)
+        if (isset($context['assigned_nurse'])) {
+            $nurse = Nurse::with('user')->find($context['assigned_nurse']['id']);
+
+            if ($nurse && $nurse->user) {
+                $recentMessages = Message::where(function($q) use ($user, $nurse) {
+                    $q->where('sender_id', $user->id)
+                      ->where('receiver_id', $nurse->user->id);
+                })->orWhere(function($q) use ($user, $nurse) {
+                    $q->where('sender_id', $nurse->user->id)
+                      ->where('receiver_id', $user->id);
+                })
+                ->orderBy('created_at', 'desc')
+                ->limit(3)
+                ->get();
+
+                if ($recentMessages->isNotEmpty()) {
+                    $context['recent_nurse_messages'] = $recentMessages->count() . ' recent messages';
                 }
             }
         }
@@ -528,7 +584,7 @@ class HospitalContextBuilder
     /**
      * Build enhanced doctor suggestions
      */
-    private function buildDoctorSuggestions(User $user, ?string $specialization, ?string $message): ?array
+    private function buildDoctorSuggestions(User $user, ?string $specialization, ?string $message): array
     {
         // Infer specialization if not provided
         if (empty($specialization) && $message) {
@@ -536,10 +592,10 @@ class HospitalContextBuilder
         }
 
         if (empty($specialization)) {
-            return null;
+            return [];
         }
 
-        // Get matching doctors
+        // Get matching doctors, nurses, and other professionals
         $aliases = SpecializationAliases::aliasesFor($specialization);
         $doctors = Doctor::with('user')
             ->where(function ($q) use ($aliases) {
@@ -550,19 +606,35 @@ class HospitalContextBuilder
             ->limit(8)
             ->get();
 
-        if ($doctors->isEmpty()) {
-            return null;
-        }
+        $nurses = Nurse::with('user')
+            ->where(function ($q) use ($aliases) {
+                foreach ($aliases as $alias) {
+                    $q->orWhere('specialization', 'LIKE', '%' . $alias . '%');
+                }
+            })
+            ->limit(8)
+            ->get();
+
+        $otherProfessionals = OtherProfessional::with('user')
+            ->where(function ($q) use ($aliases) {
+                foreach ($aliases as $alias) {
+                    $q->orWhere('specialization', 'LIKE', '%' . $alias . '%')
+                      ->orWhere('professional_type', 'LIKE', '%' . $alias . '%');
+                }
+            })
+            ->limit(8)
+            ->get();
 
         $client = $user->clients;
         
         // Enhance with relationships and history
-        $enhanced = $doctors->map(function($doctor) use ($client) {
+        $doctorData = $doctors->map(function($doctor) use ($client) {
             $data = [
                 'id' => $doctor->id,
                 'name' => $doctor->user->name ?? 'Unknown',
                 'specialization' => $doctor->specialization,
                 'availability' => $doctor->availability,
+                'provider_type' => 'doctor',
             ];
 
             // Check if assigned doctor
@@ -581,7 +653,48 @@ class HospitalContextBuilder
             }
 
             return $data;
-        })
+        });
+
+        $nurseData = $nurses->map(function($nurse) use ($client) {
+            $data = [
+                'id' => $nurse->id,
+                'name' => $nurse->user->name ?? 'Unknown',
+                'specialization' => $nurse->specialization ?: 'General Nursing',
+                'availability' => null,
+                'provider_type' => 'nurse',
+            ];
+
+            if ($client && $client->assigned_nurse_id === $nurse->id) {
+                $data['is_assigned'] = true;
+            }
+
+            return $data;
+        });
+
+        $professionalData = $otherProfessionals->map(function($professional) use ($client) {
+            $data = [
+                'id' => $professional->id,
+                'name' => $professional->user->name ?? 'Unknown',
+                'specialization' => $professional->specialization ?: ($professional->professional_type ?? 'General'),
+                'availability' => null,
+                'provider_type' => 'other_professional',
+            ];
+
+            if ($client) {
+                $apptCount = Appointment::where('client_id', $client->id)
+                    ->where('other_professional_id', $professional->id)
+                    ->count();
+                if ($apptCount > 0) {
+                    $data['previous_appointments'] = $apptCount;
+                }
+            }
+
+            return $data;
+        });
+
+        return $doctorData
+        ->concat($nurseData)
+        ->concat($professionalData)
         ->sortByDesc(function($doctor) {
             $priority = 0;
             if ($doctor['is_assigned'] ?? false) $priority += 100;
@@ -590,8 +703,6 @@ class HospitalContextBuilder
         })
         ->values()
         ->toArray();
-
-        return $enhanced;
     }
 
     /**
@@ -625,7 +736,7 @@ class HospitalContextBuilder
                 
                 return [
                     'id' => $apt->id,
-                    'date' => $aptDate->format('l, F j, Y'),
+                    'date' => $aptDate->format('D M j Y'),
                     'time' => $aptDate->format('g:i A'),
                     'relative' => $this->getRelativeTime($aptDate, $now),
                     'client' => $apt->client->user->name ?? 'Unknown',
@@ -651,7 +762,7 @@ class HospitalContextBuilder
     /**
      * Build doctor clients context
      */
-    private function buildDoctorClients(Doctor $doctor): array
+    private function buildDoctorClients(Doctor $doctor, bool $includeRecent = true): array
     {
         $clients = Client::where('assigned_doctor_id', $doctor->id)
             ->with('user')
@@ -659,9 +770,9 @@ class HospitalContextBuilder
 
         return [
             'count' => $clients->count(),
-            'recent' => $clients->take(3)->map(function($client) {
+            'recent' => $includeRecent ? $clients->take(3)->map(function($client) {
                 return $client->user->name ?? 'Unknown';
-            })->toArray(),
+            })->toArray() : [],
         ];
     }
 
@@ -704,7 +815,7 @@ class HospitalContextBuilder
     /**
      * Build nurse clients context
      */
-    private function buildNurseClients($nurse): array
+    private function buildNurseClients($nurse, bool $includeRecent = true): array
     {
         $clients = Client::where('assigned_nurse_id', $nurse->id)
             ->with('user')
@@ -712,9 +823,9 @@ class HospitalContextBuilder
 
         return [
             'count' => $clients->count(),
-            'recent' => $clients->take(3)->map(function($client) {
+            'recent' => $includeRecent ? $clients->take(3)->map(function($client) {
                 return $client->user->name ?? 'Unknown';
-            })->toArray(),
+            })->toArray() : [],
         ];
     }
 
@@ -764,7 +875,7 @@ class HospitalContextBuilder
                 
                 return [
                     'id' => $apt->id,
-                    'date' => $aptDate->format('l, F j, Y'),
+                    'date' => $aptDate->format('D M j Y'),
                     'time' => $aptDate->format('g:i A'),
                     'relative' => $this->getRelativeTime($aptDate, $now),
                     'client' => $clientName,
@@ -790,7 +901,7 @@ class HospitalContextBuilder
     /**
      * Build other professional clients context
      */
-    private function buildOtherProfessionalClients(OtherProfessional $professional): array
+    private function buildOtherProfessionalClients(OtherProfessional $professional, bool $includeRecent = true): array
     {
         // Get clients from recent appointments since direct assignment column might not exist
         $clientIds = Appointment::where('other_professional_id', $professional->id)
@@ -804,94 +915,242 @@ class HospitalContextBuilder
 
         return [
             'count' => $clients->count(),
-            'recent' => $clients->take(3)->map(function($client) {
+            'recent' => $includeRecent ? $clients->take(3)->map(function($client) {
                 return $client->user->name ?? 'Unknown';
+            })->toArray() : [],
+        ];
+    }
+
+    /**
+     * Build lightweight appointment summary for client role.
+     */
+    private function buildClientAppointmentSummary(Client $client): array
+    {
+        $now = Carbon::now('Europe/Berlin');
+
+        return [
+            'upcoming_count' => Appointment::where('client_id', $client->id)
+                ->where('date_time', '>', $now)
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+            'today_count' => Appointment::where('client_id', $client->id)
+                ->whereDate('date_time', $now->toDateString())
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+        ];
+    }
+
+    /**
+     * Build lightweight doctor appointment summary.
+     */
+    private function buildDoctorAppointmentSummary(Doctor $doctor): array
+    {
+        $now = Carbon::now('Europe/Berlin');
+
+        return [
+            'upcoming_count' => Appointment::where('doctor_id', $doctor->id)
+                ->where('date_time', '>', $now)
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+            'today_count' => Appointment::where('doctor_id', $doctor->id)
+                ->whereDate('date_time', $now->toDateString())
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+        ];
+    }
+
+    /**
+     * Build lightweight other professional appointment summary.
+     */
+    private function buildOtherProfessionalAppointmentSummary(OtherProfessional $professional): array
+    {
+        $now = Carbon::now('Europe/Berlin');
+
+        return [
+            'upcoming_count' => Appointment::where('other_professional_id', $professional->id)
+                ->where('date_time', '>', $now)
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+            'today_count' => Appointment::where('other_professional_id', $professional->id)
+                ->whereDate('date_time', $now->toDateString())
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+        ];
+    }
+
+    /**
+     * Build assignments context based on user role.
+     */
+    private function buildAssignmentContext(User $user): array
+    {
+        $query = Assignments::with(['doctor.user', 'nurse.user', 'client.user'])
+            ->orderBy('updated_at', 'desc');
+
+        if ($user->user_type === 'doctor' && $user->doctors) {
+            $query->where('assigned_doctor_id', $user->doctors->id);
+        } elseif ($user->user_type === 'nurse' && $user->nurses) {
+            $query->where('assigned_nurse_id', $user->nurses->id);
+        } elseif ($user->user_type === 'client' && $user->clients) {
+            $query->where('assigned_client_id', $user->clients->id);
+        } elseif ($user->user_type !== 'admin') {
+            return ['count' => 0, 'recent' => []];
+        }
+
+        $rows = $query->limit(5)->get();
+
+        return [
+            'count' => $rows->count(),
+            'recent' => $rows->map(function ($assignment) {
+                return [
+                    'doctor' => $assignment->doctor->user->name ?? 'Unknown',
+                    'nurse' => $assignment->nurse->user->name ?? 'Unknown',
+                    'client' => $assignment->client->user->name ?? 'Unknown',
+                    'status' => $assignment->status ?? 'unknown',
+                    'message' => $assignment->assignment_message,
+                ];
             })->toArray(),
         ];
     }
 
     /**
-     * Build system instructions with enhanced guidelines and examples
+     * Build notification summary context.
      */
-    private function buildSystemInstructions(): string
+    private function buildNotificationSummary(User $user): array
     {
-        return <<<'PROMPT'
-You are an AI assistant helping the user navigate the Phoenix Hospital Management System. The user is talking to YOU - you are NOT the user. The context above describes THE USER, not you.
+        $base = Notification::where('user_id', $user->id);
+        $recent = (clone $base)->orderBy('created_at', 'desc')->limit(3)->get(['title']);
 
-CRITICAL ACCURACY RULES:
-1. ONLY use information explicitly provided in the context above
-2. NEVER make up or hallucinate appointments, dates, or medical information
-3. If you don't have information, say "I don't have that information" or "Let me check the system"
-4. When discussing dates/times, ALWAYS reference the current date/time provided at the top of this prompt
-5. Use the relative time descriptions provided (e.g., "tomorrow at 2:00 PM", "in 3 days")
-6. If asked about appointments not listed above, clearly state "I don't see any appointments matching that description"
+        return [
+            'unread_count' => (clone $base)->whereNull('read_at')->count(),
+            'total_count' => (clone $base)->count(),
+            'recent_titles' => $recent->pluck('title')->filter()->values()->toArray(),
+        ];
+    }
 
-DATE/TIME HANDLING:
-- The current date and time are provided at the very top of this prompt with timezone (Europe/Berlin)
-- All appointment dates and times are listed with their relative descriptions
-- When user asks "when is my next appointment", use the FIRST appointment in the upcoming list
-- When user asks about "tomorrow" or specific days, calculate based on the current date provided
-- Always include both the full date AND the relative time (e.g., "Monday, January 13, 2026 at 2:00 PM (in 3 days)")
+    /**
+     * Build other professional medical records context.
+     */
+    private function buildOtherProfessionalMedicalRecords(OtherProfessional $professional): array
+    {
+        $recent = MedicalRecord::where('other_professional_id', $professional->id)
+            ->with('client.user')
+            ->orderBy('created_at', 'desc')
+            ->limit(3)
+            ->get()
+            ->map(function($record) {
+                return [
+                    'client' => $record->client->user->name ?? 'Unknown',
+                    'diagnosis' => Str::limit($record->diagnosis ?? 'No diagnosis', 40),
+                    'date' => $record->created_at->format('M d, Y'),
+                ];
+            })
+            ->toArray();
 
-IMPORTANT: Always remember you are an AI assistant. The user is a human (doctor/nurse/client/other_professional) who needs your help.
+        return [
+            'recent' => $recent,
+            'count' => MedicalRecord::where('other_professional_id', $professional->id)->count(),
+        ];
+    }
 
-For CLIENT users:
-- Help them schedule appointments
-- Help them find appropriate doctors based on their symptoms
-- Help them understand their medical records
-- Help them message doctors
-- Provide general health guidance (ALWAYS with disclaimers)
-- NEVER diagnose - always recommend consulting a doctor
-- Always prioritize their assigned doctor in suggestions
-- If they have NO appointments, suggest scheduling one instead of making up appointment data
+    /**
+     * Build admin summary context.
+     */
+    private function buildAdminSummary(): array
+    {
+        $now = Carbon::now('Europe/Berlin');
 
-For DOCTOR users:
-- Help them manage their upcoming appointments and schedule
-- Provide information about their assigned clients
-- Assist with medical record management
-- Provide administrative support for patient care
-- Reference their appointment details and client information when relevant
-- Help them prioritize based on appointment times and urgency
+        return [
+            'users_count' => User::count(),
+            'clients_count' => Client::count(),
+            'doctors_count' => Doctor::count(),
+            'nurses_count' => Nurse::count(),
+            'other_professionals_count' => OtherProfessional::count(),
+            'admins_count' => Admin::count(),
+            'appointments_today' => Appointment::whereDate('date_time', $now->toDateString())->count(),
+            'upcoming_appointments' => Appointment::where('date_time', '>', $now)
+                ->where('status', '!=', 'cancelled')
+                ->count(),
+        ];
+    }
 
-For NURSE users:
-- Help them manage their assigned clients
-- Provide administrative support
-- Assist with patient care coordination
+    /**
+     * Build query flags for conditional context loading.
+     */
+    private function resolveQueryFlags(?string $message): array
+    {
+        $queryType = SpecializationInference::classifyQueryType($message);
 
-For OTHER PROFESSIONAL users (e.g., Public Health Officers, Physiologists, etc.):
-- Help them manage their upcoming appointments and schedule
-- Provide information about their clients/patients
-- Assist with appointment management and patient care coordination
-- Reference their appointment details and client information when relevant
-- Help them prioritize based on appointment times and urgency
-- Treat them similar to doctors in terms of appointment management capabilities
+        $flags = [
+            'query_type' => $queryType,
+            'needs_appointments' => in_array($queryType, ['appointment'], true),
+            'needs_medical' => in_array($queryType, ['medical', 'records'], true) || $this->isHealthRelated($message),
+            'needs_records' => in_array($queryType, ['medical', 'records'], true),
+            'needs_assignments' => $queryType === 'assignment',
+            'needs_notifications' => $queryType === 'notification',
+            'needs_suggestions' => in_array($queryType, ['medical', 'records', 'appointment'], true),
+        ];
 
-General guidelines:
-- Be empathetic and professional
-- Reference the user's context (their appointments, their clients, their records) when appropriate
-- Include medical disclaimers for health topics when discussing with clients
-- Remember: You are assisting the user, you are not the user
-- Use bullet points and clear formatting for lists
-- Be concise but thorough
+        $flags['needs_appointments'] = $flags['needs_appointments'] || $this->hasAnyKeyword($message, [
+            'appointment', 'book', 'schedule', 'reschedule', 'cancel',
+        ]);
+        $flags['needs_assignments'] = $flags['needs_assignments'] || $this->hasAnyKeyword($message, [
+            'assignment', 'assigned', 'care team', 'team',
+        ]);
+        $flags['needs_notifications'] = $flags['needs_notifications'] || $this->hasAnyKeyword($message, [
+            'notification', 'notifications', 'alert', 'unread', 'update',
+        ]);
+        $flags['needs_suggestions'] = $flags['needs_suggestions'] || $this->hasAnyKeyword($message, [
+            'doctor', 'nurse', 'specialist', 'physio', 'therapy', 'counsel',
+        ]);
 
-EXAMPLES OF CORRECT RESPONSES:
+        return $flags;
+    }
 
-User: "When is my next appointment?"
-Good: "Your next appointment is on Monday, January 13, 2026 at 2:00 PM (in 3 days) with Dr. Smith (Cardiology). The appointment is for chest pain symptoms and the status is confirmed."
-Bad: "You have an appointment next week" (too vague, missing details)
+    /**
+     * Keyword checker helper.
+     */
+    private function hasAnyKeyword(?string $message, array $keywords): bool
+    {
+        if (empty($message)) {
+            return false;
+        }
 
-User: "Do I have any appointments tomorrow?"
-Good (if yes): "Yes, you have an appointment tomorrow at 10:00 AM with Dr. Johnson (Dermatology)."
-Good (if no): "No, you don't have any appointments scheduled for tomorrow. Would you like to schedule one?"
-Bad: "I think you might have one" (uncertain, not factual)
+        $lower = strtolower($message);
+        foreach ($keywords as $keyword) {
+            if (strpos($lower, $keyword) !== false) {
+                return true;
+            }
+        }
 
-User: "What appointments do I have?"
-Good (if none): "You currently have no upcoming appointments scheduled. Would you like help scheduling an appointment?"
-Bad (if none): "You probably have some appointments coming up" (making up information)
+        return false;
+    }
 
-MEDICAL DISCLAIMER (use when providing health information to clients):
-"Please note: This is general information only and not medical advice. For proper diagnosis and treatment, please consult with your doctor."
-PROMPT;
+    /**
+     * Build concise role-aware system instructions.
+     */
+    private function buildSystemInstructions(string $role, array $flags): string
+    {
+        $roleInstruction = match ($role) {
+            'client' => 'Role focus: help with appointments, provider selection, and record understanding; never diagnose.',
+            'doctor' => 'Role focus: support schedule, clients, and records accurately.',
+            'nurse' => 'Role focus: support assigned clients, assignments, and care coordination.',
+            'other_professional' => 'Role focus: support appointments, clients, and care coordination like a clinical professional.',
+            'admin' => 'Role focus: support operational summaries and administrative insights.',
+            default => 'Role focus: provide safe, concise system guidance.',
+        };
+
+        $queryHint = "Current query type: {$flags['query_type']}.";
+
+        return implode("\n", [
+            'You are the Phoenix hospital assistant. The user is a human; you are not the user.',
+            'Only use facts present in the provided data block.',
+            'If data is missing, explicitly say you do not have that information.',
+            'Do not invent or exaggerate doctors, appointments, records, assignments, or notifications.',
+            'Use concise bullet points when listing multiple items.',
+            'For health topics with clients, include a brief medical disclaimer.',
+            $roleInstruction,
+            $queryHint,
+        ]);
     }
 
     /**
