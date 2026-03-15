@@ -46,6 +46,10 @@ return [
             'local_domain' => env('MAIL_EHLO_DOMAIN'),
         ],
 
+        'brevo-api' => [
+            'transport' => 'brevo-api',
+        ],
+
         'ses' => [
             'transport' => 'ses',
         ],

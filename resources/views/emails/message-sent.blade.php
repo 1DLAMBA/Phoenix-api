@@ -87,6 +87,17 @@
             line-height: 1.6;
             border-radius: 4px;
         }
+        .action-button {
+            display: inline-block;
+            margin: 24px 0;
+            padding: 14px 28px;
+            background-color: #17224d;
+            color: #ffffff !important;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            border-radius: 6px;
+        }
         .footer-text {
             margin-top: 30px;
             font-size: 14px;
@@ -169,6 +180,12 @@
                 </div>
             </div>
             
+            @if(!empty($actionUrl))
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{{ $actionUrl }}" class="action-button" target="_blank" rel="noopener">View Messages</a>
+            </p>
+            @endif
+
             <div class="footer-text">
                 Please log in to your dashboard to view and reply to this message.
             </div>

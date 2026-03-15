@@ -2,30 +2,26 @@
 
 namespace App\Mail;
 
-use App\Models\Message;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Queue\SerializesModels;
 
-class MessageSentMail extends Mailable
+class WelcomeMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $messageModel;
-    public $sender;
-    public $receiver;
+    public $user;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(Message $message, User $sender, User $receiver)
+    public function __construct(User $user)
     {
-        $this->messageModel = $message;
-        $this->sender = $sender;
-        $this->receiver = $receiver;
+        $this->user = $user;
     }
 
     /**
@@ -34,7 +30,7 @@ class MessageSentMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'New Message from ' . $this->sender->name,
+            subject: 'Welcome to Phoenix - You\'re All Set!',
         );
     }
 
@@ -43,14 +39,10 @@ class MessageSentMail extends Mailable
      */
     public function content(): Content
     {
-        $frontendUrl = rtrim(config('app.frontend_url'), '/');
         return new Content(
-            view: 'emails.message-sent',
+            view: 'emails.welcome',
             with: [
-                'messageModel' => $this->messageModel,
-                'sender' => $this->sender,
-                'receiver' => $this->receiver,
-                'actionUrl' => $frontendUrl . '/panel/messages',
+                'user' => $this->user,
             ],
         );
     }
@@ -62,7 +54,16 @@ class MessageSentMail extends Mailable
      */
     public function attachments(): array
     {
+        $logoPath = public_path('images/phoenix-logo.png');
+
+        if (file_exists($logoPath)) {
+            return [
+                Attachment::fromPath($logoPath)
+                    ->as('phoenix-logo.png')
+                    ->withMime('image/png'),
+            ];
+        }
+
         return [];
     }
 }
-
