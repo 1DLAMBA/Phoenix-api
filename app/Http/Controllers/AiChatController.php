@@ -144,17 +144,47 @@ class AiChatController extends Controller
             $contextTokens = TokenCounter::estimateMessages($history);
             $maxTokens = TokenCounter::getRecommendedMaxTokens($contextTokens);
 
-            // Call Hugging Face Inference Router (OpenAI-compatible)
-            $token = env('HF_TOKEN', env('GROQ_API_KEY'));
-            
+            // Call OpenRouter (DeepSeek model) for chat completions
+            // Set OPENROUTER_API_KEY in your .env, fallback on HG_TOKEN/GROQ_API_KEY for compatibility.
+            $token = env('OPENROUTER_API_KEY', env('HF_TOKEN', env('GROQ_API_KEY')));
+            $endpoint = env('OPENROUTER_URL', 'https://openrouter.ai/v1/chat/completions');
+
+            $requestedModel = $this->resolveModel($convo->model);
             $response = Http::timeout(30)
                 ->withToken($token)
-                ->post('https://router.huggingface.co/v1/chat/completions', [
-                    'model' => $this->resolveModel($convo->model),
+                ->post($endpoint, [
+                    'model' => $requestedModel,
                     'messages' => $history,
                     'temperature' => $temperature,
                     'max_tokens' => $maxTokens,
                 ]);
+
+            if (!$response->successful()) {
+                $json = $response->json() ?: [];
+                $errorCode = data_get($json, 'error.code', '');
+                $errorMsg = data_get($json, 'error.message', '');
+                $retryModel = env('OPENROUTER_DEFAULT_MODEL', 'deepseek/deepseek');
+
+                if (in_array($errorCode, ['model_not_supported', 'model_not_found']) || str_contains($errorMsg, 'model')) {
+                    if ($requestedModel !== $retryModel) {
+                        Log::warning('Model unsupported, retrying with fallback model.', [
+                            'conversation_id' => $convo->id,
+                            'requested_model' => $requestedModel,
+                            'retry_model' => $retryModel,
+                            'response' => $json,
+                        ]);
+
+                        $response = Http::timeout(30)
+                            ->withToken($token)
+                            ->post($endpoint, [
+                                'model' => $retryModel,
+                                'messages' => $history,
+                                'temperature' => $temperature,
+                                'max_tokens' => $maxTokens,
+                            ]);
+                    }
+                }
+            }
 
             if (!$response->successful()) {
                 Log::error('AI API request failed', [
@@ -162,7 +192,7 @@ class AiChatController extends Controller
                     'response' => $response->json(),
                     'conversation_id' => $convo->id
                 ]);
-                
+
                 return response()->json([
                     'error' => 'AI service temporarily unavailable',
                     'details' => $response->json()
@@ -252,16 +282,35 @@ class AiChatController extends Controller
 
     private function resolveModel(?string $name): string
     {
-        $preferred = $name ?: env('HF_DEFAULT_MODEL');
+        $defaultModel = env('OPENROUTER_DEFAULT_MODEL', 'deepseek/deepseek-chat-v3.1');
+        $preferred = trim(strtolower((string)($name ?: '')));
+
         $map = [
-            'llama3-70b-8192' => 'meta-llama/Meta-Llama-3-70B-Instruct',
-            'llama3-8b-8192' => 'meta-llama/Meta-Llama-3-8B-Instruct',
-            'llama3.1-8b-instant' => 'meta-llama/Llama-3.1-8B-Instruct',
-            'llama3.1-70b-versatile' => 'meta-llama/Llama-3.1-70B-Instruct',
+            'deepseek' => 'deepseek/deepseek-chat-v3.1',
+            'deepseek-1' => 'deepseek/deepseek-chat-v3.1',
+            'deepseek-pro' => 'deepseek/deepseek-chat-v3.1',
+            'deepseek/deepseek' => 'deepseek/deepseek-chat-v3.1',
+            'llama3-70b-8192' => 'deepseek/deepseek-chat-v3.1',
+            'llama3-8b-8192' => 'deepseek/deepseek-chat-v3.1',
+            'llama3.1-8b-instant' => 'deepseek/deepseek-chat-v3.1',
+            'meta-llama/llama-3.1-8b-instruct' => 'deepseek/deepseek-chat-v3.1',
+            'meta-llama/meta-llama-3-8b-instruct' => 'deepseek/deepseek-chat-v3.1',
         ];
-        if ($preferred && isset($map[$preferred])) return $map[$preferred];
-        if ($preferred) return $preferred;
-        return 'meta-llama/Meta-Llama-3-70B-Instruct';
+
+        if ($preferred && isset($map[$preferred])) {
+            return $map[$preferred];
+        }
+
+        // Force any DeepSeek, Llama, or OpenRouter names to our target model
+        if ($preferred && (str_contains($preferred, 'deepseek') || str_contains($preferred, 'openrouter') || str_contains($preferred, 'llama') || str_contains($preferred, 'meta-llama'))) {
+            return 'deepseek/deepseek-chat-v3.1';
+        }
+
+        if ($preferred) {
+            return $preferred;
+        }
+
+        return $defaultModel;
     }
 
 }
