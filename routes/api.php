@@ -61,7 +61,7 @@ Route::post('/appointment/statusedit/{id}', [AppointmentController::class, 'edit
 Route::get('/appointment/get/{id}', [AppointmentController::class, 'show']);
 Route::get('/appointment/doctor/get/{id}', [AppointmentController::class, 'showDoc']);
 Route::get('/appointment/other-professional/get/{id}', [AppointmentController::class, 'showOtherProfessional']);
-Route::get('/appointment/admin/get/{id}', [AppointmentController::class, 'showAdm']);
+Route::get('/appointment/nurse/get/{id}', [AppointmentController::class, 'showNurse']);
 Route::get('/appointment/client/get/{id}', [AppointmentController::class, 'showCli']);
 Route::delete('/appointment/delete/{id}', [AppointmentController::class, 'delete']);
 Route::get('/appointment/get', [AppointmentController::class, 'index']);
