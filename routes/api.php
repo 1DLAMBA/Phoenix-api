@@ -16,6 +16,7 @@ use App\Http\Controllers\NurseController;
 use App\Http\Controllers\OtherProfessionalController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiChatController;
+use App\Http\Controllers\BankAccountController;
 
 use App\Models\Appointment;
 use Illuminate\Http\Request;
@@ -135,3 +136,11 @@ Route::post('/upload', [FileUploadController::class, 'upload'])->name('file.uplo
 Route::post('/multi-upload', [FileUploadController::class, 'multiUpload']);
 
 Route::get('/file/get/{filename}/{visibility?}', [FileUploadController::class, 'getFile'])->name('file.get');
+
+// *****BANK ACCOUNT*****
+Route::get('/banks', [BankAccountController::class, 'getBanks']);
+Route::get('/bank-account', [BankAccountController::class, 'index']);
+Route::post('/bank-account', [BankAccountController::class, 'store']);
+Route::post('/bank-account/resolve', [BankAccountController::class, 'resolveAccount']);
+Route::put('/bank-account/{id}', [BankAccountController::class, 'update']);
+Route::delete('/bank-account/{id}', [BankAccountController::class, 'destroy']);
