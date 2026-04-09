@@ -21,7 +21,7 @@ class Nurse extends Model
 
     public function appointments()
     {
-        return $this->hasMany(Appointment::class);
+        return $this->hasMany(Appointment::class, 'nurse_id');
     }
     public function clients()
     {
@@ -39,5 +39,10 @@ class Nurse extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function bankAccount()
+    {
+        return $this->morphOne(BankAccount::class, 'professionable');
     }
 }

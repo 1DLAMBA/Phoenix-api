@@ -39,10 +39,10 @@ class AppointmentAcceptedMail extends Mailable
     public function content(): Content
     {
         // Load relationships if not already loaded
-        $this->appointment->load('doctor.user', 'otherProfessional.user', 'client.user');
+        $this->appointment->load('doctor.user', 'otherProfessional.user', 'nurse.user', 'client.user');
         
-        // Determine which professional (doctor or other_professional)
-        $professional = $this->appointment->doctor ?? $this->appointment->otherProfessional;
+        // Determine which professional (doctor, other_professional, or nurse)
+        $professional = $this->appointment->doctor ?? $this->appointment->otherProfessional ?? $this->appointment->nurse;
         
         // Ensure professional and user are loaded
         if ($professional && !$professional->relationLoaded('user')) {

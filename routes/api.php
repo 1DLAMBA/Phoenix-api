@@ -16,6 +16,7 @@ use App\Http\Controllers\NurseController;
 use App\Http\Controllers\OtherProfessionalController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiChatController;
+use App\Http\Controllers\BankAccountController;
 
 use App\Models\Appointment;
 use Illuminate\Http\Request;
@@ -61,7 +62,7 @@ Route::post('/appointment/statusedit/{id}', [AppointmentController::class, 'edit
 Route::get('/appointment/get/{id}', [AppointmentController::class, 'show']);
 Route::get('/appointment/doctor/get/{id}', [AppointmentController::class, 'showDoc']);
 Route::get('/appointment/other-professional/get/{id}', [AppointmentController::class, 'showOtherProfessional']);
-Route::get('/appointment/admin/get/{id}', [AppointmentController::class, 'showAdm']);
+Route::get('/appointment/nurse/get/{id}', [AppointmentController::class, 'showNurse']);
 Route::get('/appointment/client/get/{id}', [AppointmentController::class, 'showCli']);
 Route::delete('/appointment/delete/{id}', [AppointmentController::class, 'delete']);
 Route::get('/appointment/get', [AppointmentController::class, 'index']);
@@ -135,3 +136,11 @@ Route::post('/upload', [FileUploadController::class, 'upload'])->name('file.uplo
 Route::post('/multi-upload', [FileUploadController::class, 'multiUpload']);
 
 Route::get('/file/get/{filename}/{visibility?}', [FileUploadController::class, 'getFile'])->name('file.get');
+
+// *****BANK ACCOUNT*****
+Route::get('/banks', [BankAccountController::class, 'getBanks']);
+Route::get('/bank-account', [BankAccountController::class, 'index']);
+Route::post('/bank-account', [BankAccountController::class, 'store']);
+Route::post('/bank-account/resolve', [BankAccountController::class, 'resolveAccount']);
+Route::put('/bank-account/{id}', [BankAccountController::class, 'update']);
+Route::delete('/bank-account/{id}', [BankAccountController::class, 'destroy']);

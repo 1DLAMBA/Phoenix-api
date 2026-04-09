@@ -21,7 +21,7 @@ class AppointmentController extends Controller
      */
     public function index()
     {
-        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'client.user');
+        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'nurse.user', 'client.user');
         return response()->json([
             'appointments'=>$appointment
         ]);
@@ -52,10 +52,10 @@ class AppointmentController extends Controller
             $appointment->refresh();
             
             // Load relationships for email - handle both doctor and other_professional
-            $appointment->load('doctor.user', 'otherProfessional.user', 'client.user');
+            $appointment->load('doctor.user', 'otherProfessional.user', 'nurse.user', 'client.user');
             
             // Determine which professional to notify
-            $professional = $appointment->doctor ?? $appointment->otherProfessional;
+            $professional = $appointment->doctor ?? $appointment->otherProfessional ?? $appointment->nurse;
             
             // Send email notification to professional
             if ($professional && $professional->user) {
@@ -101,7 +101,8 @@ class AppointmentController extends Controller
                 Log::warning('Appointment created but professional not found for notification', [
                     'appointment_id' => $appointment->id,
                     'doctor_id' => $appointment->doctor_id,
-                    'other_professional_id' => $appointment->other_professional_id
+                    'other_professional_id' => $appointment->other_professional_id,
+                    'nurse_id' => $appointment->nurse_id
                 ]);
             }
         }
@@ -116,14 +117,14 @@ class AppointmentController extends Controller
      */
     public function show($id)
     {
-        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'client.user')->findorfail($id);
+        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'nurse.user', 'client.user')->findorfail($id);
         return response()->json([
             'appointments'=>$appointment
         ]);
     }
     public function showDoc($id)
     {
-        $appointment = Appointment::with(['client.user', 'otherProfessional.user'])
+        $appointment = Appointment::with(['client.user', 'otherProfessional.user', 'nurse.user'])
             ->where('doctor_id', $id)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -134,8 +135,19 @@ class AppointmentController extends Controller
     
     public function showOtherProfessional($id)
     {
-        $appointment = Appointment::with(['client.user', 'doctor.user'])
+        $appointment = Appointment::with(['client.user', 'doctor.user', 'nurse.user'])
             ->where('other_professional_id', $id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        return response()->json([
+            'appointments'=>$appointment
+        ]);
+    }
+
+    public function showNurse($id)
+    {
+        $appointment = Appointment::with(['client.user', 'doctor.user', 'otherProfessional.user'])
+            ->where('nurse_id', $id)
             ->orderBy('created_at', 'desc')
             ->get();
         return response()->json([
@@ -144,7 +156,7 @@ class AppointmentController extends Controller
     }
     public function showCli($id)
     {
-        $appointment = Appointment::with('doctor.user', 'otherProfessional.user')->where('client_id', $id)->get();
+        $appointment = Appointment::with('doctor.user', 'otherProfessional.user', 'nurse.user')->where('client_id', $id)->get();
         return response()->json([
             'appointments'=>$appointment
         ]);
@@ -165,15 +177,17 @@ class AppointmentController extends Controller
         
         // Load relationships - handle both doctor and other_professional
         // Use fresh() to ensure we get the latest relationships
-        $appointment = $appointment->fresh(['doctor.user', 'otherProfessional.user', 'client.user']);
+        $appointment = $appointment->fresh(['doctor.user', 'otherProfessional.user', 'nurse.user', 'client.user']);
         
         Log::info('Appointment status updated', [
             'appointment_id' => $appointment->id,
             'status' => $requestStatus,
             'doctor_id' => $appointment->doctor_id,
             'other_professional_id' => $appointment->other_professional_id,
+            'nurse_id' => $appointment->nurse_id,
             'has_doctor' => isset($appointment->doctor),
             'has_other_professional' => isset($appointment->otherProfessional),
+            'has_nurse' => isset($appointment->nurse),
             'has_client' => isset($appointment->client)
         ]);
 
@@ -196,7 +210,7 @@ class AppointmentController extends Controller
                     // Check if client has a user relationship
                     if ($client->user_id && $client->user) {
                         // Determine which professional accepted
-                        $professional = $appointment->doctor ?? $appointment->otherProfessional;
+                        $professional = $appointment->doctor ?? $appointment->otherProfessional ?? $appointment->nurse;
                         $professionalName = 'Your healthcare provider';
                         $professionalType = 'unknown';
                         
@@ -206,6 +220,9 @@ class AppointmentController extends Controller
                         } elseif ($appointment->otherProfessional && $appointment->otherProfessional->user) {
                             $professionalName = $appointment->otherProfessional->user->name;
                             $professionalType = 'other_professional';
+                        } elseif ($appointment->nurse && $appointment->nurse->user) {
+                            $professionalName = $appointment->nurse->user->name;
+                            $professionalType = 'nurse';
                         }
                         
                         Log::info('Creating notification for appointment acceptance', [
