@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\OtherProfessional;
 use App\Http\Requests\StoreOtherProfessionalRequest;
 use App\Http\Requests\UpdateOtherProfessionalRequest;
+use App\Support\ProfessionalRegistration;
 
 class OtherProfessionalController extends Controller
 {
@@ -14,105 +15,110 @@ class OtherProfessionalController extends Controller
     public function index()
     {
         $query = OtherProfessional::with('user');
-        
-        // Search functionality
+
         if (request()->has('search') && !empty(request('search'))) {
             $search = request('search');
-            $query->where(function($q) use ($search) {
-                $q->whereHas('user', function($userQuery) use ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('user', function ($userQuery) use ($search) {
                     $userQuery->where('name', 'like', "%{$search}%")
-                              ->orWhere('email', 'like', "%{$search}%")
-                              ->orWhere('phoneno', 'like', "%{$search}%");
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phoneno', 'like', "%{$search}%");
                 })->orWhere('license_number', 'like', "%{$search}%")
-                  ->orWhere('specialization', 'like', "%{$search}%")
-                  ->orWhere('professional_type', 'like', "%{$search}%");
+                    ->orWhere('specialization', 'like', "%{$search}%")
+                    ->orWhere('professional_type', 'like', "%{$search}%");
             });
         }
-        
-        // Pagination
+
         $perPage = request('per_page', 10);
         $page = request('page', 1);
-        
+
         $otherProfessionals = $query->paginate($perPage, ['*'], 'page', $page);
-        
+
+        $items = collect($otherProfessionals->items())->map(function (OtherProfessional $op) {
+            return ProfessionalRegistration::appendFlagToOtherProfessional($op);
+        })->all();
+
         return response()->json([
-            'other_professional' => $otherProfessionals->items(),
+            'other_professional' => $items,
             'pagination' => [
                 'current_page' => $otherProfessionals->currentPage(),
                 'per_page' => $otherProfessionals->perPage(),
                 'total' => $otherProfessionals->total(),
                 'last_page' => $otherProfessionals->lastPage(),
                 'from' => $otherProfessionals->firstItem(),
-                'to' => $otherProfessionals->lastItem()
-            ]
+                'to' => $otherProfessionals->lastItem(),
+            ],
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create(StoreOtherProfessionalRequest $request)
     {
         $validatedData = $request->validated();
-        if($validatedData){
-            $otherProfessional = OtherProfessional::create($validatedData);
-            $otherProfessional->save();
 
+        if (OtherProfessional::where('user_id', $validatedData['user_id'])->exists()) {
             return response()->json([
-                'success'=>'registered as an other professional'
-            ]);
+                'error' => 'A professional profile already exists for this account. Use update to complete your registration.',
+                'error_code' => 'DUPLICATE_PROFESSIONAL_PROFILE',
+            ], 409);
         }
+
+        $otherProfessional = OtherProfessional::create($validatedData);
+        $otherProfessional->save();
+        $otherProfessional->load('user');
+        ProfessionalRegistration::appendFlagToOtherProfessional($otherProfessional);
+
+        return response()->json([
+            'success' => 'registered as an other professional',
+            'other_professional' => $otherProfessional,
+        ]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(StoreOtherProfessionalRequest $request)
     {
         //
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show($id)
     {
         $otherProfessional = OtherProfessional::with('user')->findOrFail($id);
+        ProfessionalRegistration::appendFlagToOtherProfessional($otherProfessional);
+
         return response()->json([
-            'other_professional'=>$otherProfessional
+            'other_professional' => $otherProfessional,
         ]);
     }
 
-    /**
-     * Get other professional by user_id
-     */
     public function getOtherProfessionalUser(string $id)
     {
         $otherProfessional = OtherProfessional::with('user')->where('user_id', $id)->first();
+        if ($otherProfessional) {
+            ProfessionalRegistration::appendFlagToOtherProfessional($otherProfessional);
+        }
+
         return response()->json([
-            'other_professional'=>$otherProfessional
+            'other_professional' => $otherProfessional,
         ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(string $id)
     {
         //
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(UpdateOtherProfessionalRequest $request, string $id)
+    public function updateProfile(UpdateOtherProfessionalRequest $request, string $id)
     {
-        //
+        $otherProfessional = OtherProfessional::with('user')->findOrFail($id);
+        $otherProfessional->fill($request->validated());
+        $otherProfessional->save();
+        $otherProfessional->load('user');
+        ProfessionalRegistration::appendFlagToOtherProfessional($otherProfessional);
+
+        return response()->json([
+            'success' => true,
+            'other_professional' => $otherProfessional,
+        ]);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(string $id)
     {
         //

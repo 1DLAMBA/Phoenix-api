@@ -11,7 +11,7 @@ class UpdateDoctorRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -22,7 +22,14 @@ class UpdateDoctorRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'license_number' => 'sometimes|nullable|string|max:255',
+            'med_school' => 'sometimes|nullable|string|max:255',
+            'specialization' => 'sometimes|nullable|string|max:255',
+            'grad_year' => 'sometimes|nullable|integer',
+            'degree_file' => 'sometimes|nullable|string|max:2048',
+            'signature' => 'sometimes|nullable|string|max:2048',
+            'id_card' => 'sometimes|nullable|string|max:2048',
+            'availability' => 'sometimes|nullable|boolean',
         ];
     }
 }

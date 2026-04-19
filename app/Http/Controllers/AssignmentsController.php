@@ -9,6 +9,7 @@ use Illuminate\Http\Request as HttpRequest;
 use App\Http\Requests\UpdateAssignmentsRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use App\Support\ProfessionalRegistration;
 
 class AssignmentsController extends Controller
 {
@@ -68,7 +69,18 @@ class AssignmentsController extends Controller
     public function edit(HttpRequest $request,string $id)
     {
         $requestStatus = $request->status;
-        $appointment = Assignments::findorfail($id);
+        $appointment = Assignments::with('nurse.user')->findOrFail($id);
+
+        if (ProfessionalRegistration::statusChangeRequiresProfessionalResponse((string) $requestStatus)) {
+            $nurse = $appointment->nurse ?? null;
+            if ($nurse && $nurse->user && !ProfessionalRegistration::registrationComplete($nurse->user)) {
+                return response()->json([
+                    'error' => 'Complete your registration before updating this assignment.',
+                    'error_code' => 'REGISTRATION_INCOMPLETE',
+                ], 403);
+            }
+        }
+
         $appointment->status = $requestStatus;
         $appointment->save();
         return response()->json([

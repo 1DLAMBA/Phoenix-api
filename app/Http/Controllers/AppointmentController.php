@@ -7,6 +7,7 @@ use App\Models\Notification;
 use App\Events\NotificationSent;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\UpdateAppointmentRequest;
+use App\Support\ProfessionalRegistration;
 use App\Mail\AppointmentBookedMail;
 use App\Mail\AppointmentAcceptedMail;
 use Illuminate\Http\Request as HttpRequest;
@@ -168,7 +169,26 @@ class AppointmentController extends Controller
     public function edit(HttpRequest $request,string $id)
     {
         $requestStatus = $request->status;
-        $appointment = Appointment::findorfail($id);
+        $appointment = Appointment::with(['doctor.user', 'otherProfessional.user', 'nurse.user'])->findOrFail($id);
+
+        if (ProfessionalRegistration::statusChangeRequiresProfessionalResponse((string) $requestStatus)) {
+            $professionalUser = null;
+            if ($appointment->doctor_id && $appointment->doctor && $appointment->doctor->user) {
+                $professionalUser = $appointment->doctor->user;
+            } elseif ($appointment->other_professional_id && $appointment->otherProfessional && $appointment->otherProfessional->user) {
+                $professionalUser = $appointment->otherProfessional->user;
+            } elseif ($appointment->nurse_id && $appointment->nurse && $appointment->nurse->user) {
+                $professionalUser = $appointment->nurse->user;
+            }
+
+            if ($professionalUser && !ProfessionalRegistration::registrationComplete($professionalUser)) {
+                return response()->json([
+                    'error' => 'This professional must complete registration before accepting or declining appointments.',
+                    'error_code' => 'REGISTRATION_INCOMPLETE',
+                ], 403);
+            }
+        }
+
         $appointment->status = $requestStatus;
         $appointment->save();
 
