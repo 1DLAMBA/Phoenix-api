@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Support\ProfessionalRegistration;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\OtpVerificationMail;
 use App\Mail\WelcomeMail;
@@ -84,9 +85,14 @@ class UserController extends Controller
 
         if (auth()->attempt($credentials)) {
             $user = auth()->user()->load('doctors', 'nurses', 'clients', 'otherProfessionals', 'sentMessages', 'receivedMessages');
-            
-            // Check if email is verified for professionals
+
             $professionalTypes = ['doctor', 'nurse', 'other_professional'];
+            if (in_array($user->user_type, $professionalTypes, true) && $user->email_verified_at) {
+                ProfessionalRegistration::ensureStubForVerifiedProfessional($user);
+                $user->refresh()->load(['doctors', 'nurses', 'clients', 'otherProfessionals', 'sentMessages', 'receivedMessages']);
+            }
+
+            // Check if email is verified for professionals
             if (in_array($user->user_type, $professionalTypes) && !$user->email_verified_at) {
                 return response()->json([
                     'error' => 'Email not verified',
@@ -96,9 +102,15 @@ class UserController extends Controller
                     'user_type' => $user->user_type
                 ], 403);
             }
-            
+
+            if (in_array($user->user_type, $professionalTypes) && $user->email_verified_at) {
+                ProfessionalRegistration::ensureStubForVerifiedProfessional($user);
+                $user->refresh();
+                $user->load(['doctors', 'nurses', 'otherProfessionals', 'clients', 'sentMessages', 'receivedMessages']);
+            }
+
             return response()->json([
-                'user' => $user,
+                'user' => $this->userWithFlags($user),
             ]);
         }
 
@@ -111,8 +123,9 @@ class UserController extends Controller
     public function show(string $id)
     {
         $user = User::with('doctors', 'nurses', 'clients', 'otherProfessionals', 'clients.appointments.otherProfessional.user','clients.appointments.doctor.user')->findorfail($id);
+
         return response()->json([
-            'user' => $user
+            'user' => $this->userWithFlags($user),
         ]);
     }
 
@@ -131,6 +144,37 @@ class UserController extends Controller
     public function update(Request $request, string $id)
     {
         //
+    }
+
+    /**
+     * Patch basic user fields (e.g. passport path after upload) for the logged-in account.
+     */
+    public function patchProfile(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'passport' => 'sometimes|nullable|string|max:2048',
+        ]);
+
+        $user = User::findOrFail($id);
+
+        if (isset($validated['passport'])) {
+            $user->passport = $validated['passport'];
+            $user->save();
+        }
+
+        $user->load(['doctors', 'nurses', 'otherProfessionals', 'clients']);
+
+        return response()->json([
+            'success' => true,
+            'user' => $this->userWithFlags($user),
+        ]);
+    }
+
+    private function userWithFlags(User $user): array
+    {
+        $user->loadMissing(['doctors', 'nurses', 'otherProfessionals', 'clients']);
+
+        return array_merge($user->toArray(), ProfessionalRegistration::appendFlagsToUser($user));
     }
 
     /**
@@ -203,6 +247,10 @@ class UserController extends Controller
         $user->otp_expires_at = null;
         $user->save();
 
+        ProfessionalRegistration::ensureStubForVerifiedProfessional($user);
+        $user->refresh();
+        $user->load(['doctors', 'nurses', 'otherProfessionals', 'clients']);
+
         // Sign-up is complete; send welcome email
         try {
             Mail::to($user->email)->send(new WelcomeMail($user));
@@ -212,7 +260,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => 'Email verified successfully',
-            'user' => $user
+            'user' => $this->userWithFlags($user),
         ]);
     }
 

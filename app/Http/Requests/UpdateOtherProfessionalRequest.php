@@ -22,13 +22,15 @@ class UpdateOtherProfessionalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id'=>'sometimes|integer',
-            'professional_type'=>'sometimes|string',
-            'license_number'=>'sometimes|string', 
-            'med_school'=>'sometimes|string', 
-            'specialization'=>'sometimes|string',
-            'grad_year'=>'sometimes|integer',   
-            'degree_file'=>'nullable|string',
+            'user_id' => 'sometimes|integer',
+            'professional_type' => 'sometimes|nullable|string|max:255',
+            'license_number' => 'sometimes|nullable|string|max:255',
+            'med_school' => 'sometimes|nullable|string|max:255',
+            'specialization' => 'sometimes|nullable|string|max:255',
+            'grad_year' => 'sometimes|nullable|integer',
+            'degree_file' => 'sometimes|nullable|string|max:2048',
+            'signature' => 'sometimes|nullable|string|max:2048',
+            'id_card' => 'sometimes|nullable|string|max:2048',
         ];
     }
 }

@@ -55,6 +55,7 @@ Route::get('/user/get/{id}', [UserController::class, 'show']);
 Route::get('/users/get', [UserController::class, 'index']);
 Route::post('/user/verify-otp', [UserController::class, 'verifyOtp']);
 Route::post('/user/regenerate-otp', [UserController::class, 'regenerateOtp']);
+Route::put('/user/patch/{id}', [UserController::class, 'patchProfile']);
 
 // *****APPPOINTMENT*****
 Route::post('/appointment/create', [AppointmentController::class, 'store']);
@@ -83,6 +84,7 @@ Route::get('/client/user/get/{id}', [ClientController::class, 'getClient']);
 
 // *****DOCTOR*****
 Route::post('/doctor/create', [DoctorController::class, 'create']);
+Route::put('/doctor/update/{id}', [DoctorController::class, 'updateProfile']);
 Route::get('/doctor/get', [DoctorController::class, 'index']);
 Route::get('/doctor/get/{id}', [DoctorController::class, 'show']);
 Route::get('/doctor/user/get/{id}', [DoctorController::class, 'getDoc']);
@@ -90,11 +92,14 @@ Route::post('/doctor/toggle-availability/{id}', [DoctorController::class, 'toggl
 
 // *****NURSE*****
 Route::post('/nurse/create', [NurseController::class, 'create']);
+Route::put('/nurse/update/{id}', [NurseController::class, 'updateProfile']);
 Route::get('/nurse/get', [NurseController::class, 'index']);
 Route::get('/nurse/get/{id}', [NurseController::class, 'show']);
+Route::get('/nurse/user/get/{id}', [NurseController::class, 'getNurseByUser']);
 
 // *****OTHER_PROFESSIONAL*****
 Route::post('/other-professional/create', [OtherProfessionalController::class, 'create']);
+Route::put('/other-professional/update/{id}', [OtherProfessionalController::class, 'updateProfile']);
 Route::get('/other-professional/get', [OtherProfessionalController::class, 'index']);
 Route::get('/other-professional/get/{id}', [OtherProfessionalController::class, 'show']);
 Route::get('/other-professional/user/get/{id}', [OtherProfessionalController::class, 'getOtherProfessionalUser']);
