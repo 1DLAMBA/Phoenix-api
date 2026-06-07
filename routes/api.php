@@ -14,6 +14,7 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NurseController;
 use App\Http\Controllers\OtherProfessionalController;
+use App\Http\Controllers\ProfessionalController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BankAccountController;
@@ -96,6 +97,9 @@ Route::put('/nurse/update/{id}', [NurseController::class, 'updateProfile']);
 Route::get('/nurse/get', [NurseController::class, 'index']);
 Route::get('/nurse/get/{id}', [NurseController::class, 'show']);
 Route::get('/nurse/user/get/{id}', [NurseController::class, 'getNurseByUser']);
+
+// *****PROFESSIONALS (unified staff directory)*****
+Route::get('/professionals/get', [ProfessionalController::class, 'index']);
 
 // *****OTHER_PROFESSIONAL*****
 Route::post('/other-professional/create', [OtherProfessionalController::class, 'create']);
