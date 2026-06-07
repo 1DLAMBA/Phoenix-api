@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Doctor;
 use App\Http\Requests\StoreDoctorRequest;
 use App\Http\Requests\UpdateDoctorRequest;
+use App\Support\ProfessionalListingQuery;
 use App\Support\ProfessionalRegistration;
 
 class DoctorController extends Controller
@@ -14,12 +15,30 @@ class DoctorController extends Controller
      */
     public function index()
     {
-        $doctors = Doctor::with('user')->get()->map(function (Doctor $doctor) {
+        $params = ProfessionalListingQuery::getListingParams();
+        $perPage = max(1, min($params['per_page'], 500));
+        $page = max(1, $params['page']);
+
+        $query = Doctor::with('user');
+        ProfessionalListingQuery::applyCommonFilters($query, $params);
+        ProfessionalListingQuery::applyDoctorAvailabilityFilter($query, $params['availability']);
+
+        $doctors = $query->paginate($perPage, ['*'], 'page', $page);
+
+        $items = collect($doctors->items())->map(function (Doctor $doctor) {
             return ProfessionalRegistration::appendFlagToDoctor($doctor);
-        });
+        })->all();
 
         return response()->json([
-            'doctor' => $doctors->values()->all(),
+            'doctor' => $items,
+            'pagination' => [
+                'current_page' => $doctors->currentPage(),
+                'per_page' => $doctors->perPage(),
+                'total' => $doctors->total(),
+                'last_page' => $doctors->lastPage(),
+                'from' => $doctors->firstItem(),
+                'to' => $doctors->lastItem(),
+            ],
         ]);
     }
 
