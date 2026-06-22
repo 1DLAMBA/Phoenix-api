@@ -39,10 +39,13 @@ class WelcomeMail extends Mailable
      */
     public function content(): Content
     {
+        $frontendUrl = rtrim(config('app.frontend_url'), '/');
+
         return new Content(
             view: 'emails.welcome',
             with: [
                 'user' => $this->user,
+                'appUrl' => $frontendUrl,
             ],
         );
     }
