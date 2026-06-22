@@ -120,6 +120,17 @@
             font-size: 13px;
             opacity: 0.9;
         }
+        .action-button {
+            display: inline-block;
+            margin-top: 16px;
+            padding: 14px 28px;
+            background-color: #ffffff;
+            color: #17224d !important;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            border-radius: 6px;
+        }
         .footer-text {
             margin-top: 30px;
             font-size: 14px;
@@ -194,6 +205,7 @@
             <div class="cta-box">
                 <p><strong>Get started</strong></p>
                 <p class="sub">Log in to your account and explore the platform.</p>
+                <a href="{{ $appUrl }}" class="action-button" target="_blank" rel="noopener">Go to Phoenix Med</a>
             </div>
 
             <div class="footer-text">
