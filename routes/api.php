@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AssignmentsController;
 use App\Http\Controllers\ClientController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\FileUploadController;
 use App\Http\Controllers\GroqController;
+use App\Http\Controllers\HospitalController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\MedicalRecordController;
 use App\Http\Controllers\MessageController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\ProfessionalController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BankAccountController;
+use App\Http\Controllers\PaymentController;
 
 use App\Models\Appointment;
 use Illuminate\Http\Request;
@@ -44,10 +47,29 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Broadcast::routes(['/messages' => ['auth:api']]);
 
 
+// *****AUTH*****
+// One sign-in for admins, hospitals and users.
+Route::post('/auth/login', [AuthController::class, 'login']);
+
 // *****ADMIN*****
-Route::post('/admin/register', [AdminController::class, 'create']);
-Route::post('/admin/login', [AdminController::class, 'login']);
-Route::get('/admin/get/{id}', [AdminController::class, 'show']);
+
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+    Route::get('/me/{id}', [AdminController::class, 'show']);
+    Route::get('/users', [UserController::class, 'index']);
+    Route::get('/hospitals', [HospitalController::class, 'adminIndex']);
+    Route::post('/hospitals/{id}/approve', [HospitalController::class, 'approve']);
+    Route::post('/hospitals/{id}/reject', [HospitalController::class, 'reject']);
+});
+
+// *****HOSPITAL*****
+Route::post('/hospital/register', [HospitalController::class, 'create']);
+Route::get('/hospital/get', [HospitalController::class, 'index']);
+Route::get('/hospital/get/{id}', [HospitalController::class, 'show']);
+
+Route::middleware(['auth:sanctum', 'hospital'])->prefix('hospital')->group(function () {
+    Route::get('/me', [HospitalController::class, 'me']);
+    Route::get('/me/staff', [HospitalController::class, 'staff']);
+});
 
 // *****USER*****
 Route::post('/user/register', [UserController::class, 'create']);
@@ -55,7 +77,9 @@ Route::post('/user/login', [UserController::class, 'login']);
 Route::get('/user/get/{id}', [UserController::class, 'show']);
 Route::get('/users/get', [UserController::class, 'index']);
 Route::post('/user/verify-otp', [UserController::class, 'verifyOtp']);
+Route::post('/user/verify-email', [UserController::class, 'verifyEmail']);
 Route::post('/user/regenerate-otp', [UserController::class, 'regenerateOtp']);
+Route::post('/user/resend-verification', [UserController::class, 'regenerateOtp']);
 Route::put('/user/patch/{id}', [UserController::class, 'patchProfile']);
 
 // *****APPPOINTMENT*****
@@ -145,6 +169,12 @@ Route::post('/upload', [FileUploadController::class, 'upload'])->name('file.uplo
 Route::post('/multi-upload', [FileUploadController::class, 'multiUpload']);
 
 Route::get('/file/get/{filename}/{visibility?}', [FileUploadController::class, 'getFile'])->name('file.get');
+
+// *****CONSULTATION PAYMENT*****
+Route::post('/payment/initialize', [PaymentController::class, 'initialize']);
+Route::post('/payment/verify', [PaymentController::class, 'verify']);
+Route::post('/payment/webhook', [PaymentController::class, 'webhook']);
+Route::get('/payment/transactions', [PaymentController::class, 'transactions']); // expects ?user_id=
 
 // *****BANK ACCOUNT*****
 Route::get('/banks', [BankAccountController::class, 'getBanks']);

@@ -81,8 +81,11 @@ class DoctorController extends Controller
      */
     public function show(Doctor $doctor, string $id)
     {
-        $doctor = Doctor::with('user')->where('id', $id)->first();
+        $doctor = Doctor::with(['user', 'bankAccount'])->where('id', $id)->first();
         if ($doctor) {
+            // Expose only the consultation fee to visitors, not the bank details.
+            $doctor->consultation_fee = $doctor->bankAccount?->consultation_fee;
+            $doctor->unsetRelation('bankAccount');
             ProfessionalRegistration::appendFlagToDoctor($doctor);
         }
 

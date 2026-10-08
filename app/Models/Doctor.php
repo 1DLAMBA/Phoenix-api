@@ -17,7 +17,8 @@ class Doctor extends Model
         'degree_file',
         'signature',
         'id_card',
-        'availability'
+        'availability',
+        'hospital_id'
     ];
     
     public function appointments()
@@ -36,6 +37,11 @@ class Doctor extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function hospital()
+    {
+        return $this->belongsTo(Hospital::class);
     }
 
     public function bankAccount()

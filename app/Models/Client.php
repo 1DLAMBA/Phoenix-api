@@ -12,8 +12,16 @@ class Client extends Model
     protected $fillable = [
         'user_id',
         'assigned_doctor_id',
-        'assigned_nurse_id', 
-        'date_of_birth'    
+        'assigned_nurse_id',
+        'date_of_birth',
+        'free_consultation_used',
+        'free_consultation_used_at',
+        'free_consultation_appointment_id',
+    ];
+
+    protected $casts = [
+        'free_consultation_used' => 'boolean',
+        'free_consultation_used_at' => 'datetime',
     ];
 
     public function doctors()

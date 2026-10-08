@@ -164,13 +164,6 @@
                     <div class="info-value">{{ $client->user->email }}</div>
                 </div>
                 
-                @if($client->user->phoneno)
-                <div class="info-row">
-                    <div class="info-label">Patient Phone</div>
-                    <div class="info-value">{{ $client->user->phoneno }}</div>
-                </div>
-                @endif
-                
                 <div class="info-row">
                     <div class="info-label">Appointment Date & Time</div>
                     <div class="info-value">
@@ -195,6 +188,10 @@
                 @endif
             </div>
             
+            <div style="background-color: #e4f2f1; border: 1px solid #0F766E; border-radius: 8px; padding: 16px 20px; margin: 24px 0; color: #0b4f49; font-size: 15px; line-height: 1.5;">
+                <strong>Action needed:</strong> Log in and <strong>accept this appointment</strong> to confirm it. The patient is only charged your consultation fee after you accept, so accepting is what gets you paid.
+            </div>
+
             @if(!empty($actionUrl))
             <p style="text-align: center; margin: 24px 0;">
                 <a href="{{ $actionUrl }}" class="action-button" target="_blank" rel="noopener">View Appointments</a>

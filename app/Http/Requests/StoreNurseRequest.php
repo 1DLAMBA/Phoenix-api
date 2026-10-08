@@ -30,6 +30,7 @@ class StoreNurseRequest extends FormRequest
             'degree_file'=>'',
             'signature'=>'',
             'id_card'=>'',
+            'hospital_id'=>'sometimes|nullable|integer|exists:hospitals,id',
         ];
     }
 }

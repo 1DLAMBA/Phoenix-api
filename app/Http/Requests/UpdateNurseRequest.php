@@ -29,6 +29,7 @@ class UpdateNurseRequest extends FormRequest
             'degree_file' => 'sometimes|nullable|string|max:2048',
             'signature' => 'sometimes|nullable|string|max:2048',
             'id_card' => 'sometimes|nullable|string|max:2048',
+            'hospital_id' => 'sometimes|nullable|integer|exists:hospitals,id',
         ];
     }
 }
