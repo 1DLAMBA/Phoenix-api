@@ -26,6 +26,7 @@ class User extends Authenticatable
         'passport',
         'password',
         'email_verification_otp',
+        'email_verification_token',
         'otp_expires_at',
     ];
     public function doctors()
@@ -67,6 +68,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verification_otp',
+        'email_verification_token',
     ];
 
     /**

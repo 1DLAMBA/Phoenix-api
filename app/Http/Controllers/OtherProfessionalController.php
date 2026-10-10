@@ -80,7 +80,9 @@ class OtherProfessionalController extends Controller
 
     public function show($id)
     {
-        $otherProfessional = OtherProfessional::with('user')->findOrFail($id);
+        $otherProfessional = OtherProfessional::with(['user', 'bankAccount'])->findOrFail($id);
+        $otherProfessional->consultation_fee = $otherProfessional->bankAccount?->consultation_fee;
+        $otherProfessional->unsetRelation('bankAccount');
         ProfessionalRegistration::appendFlagToOtherProfessional($otherProfessional);
 
         return response()->json([

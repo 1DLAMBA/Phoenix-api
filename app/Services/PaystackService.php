@@ -16,7 +16,12 @@ class PaystackService
     {
         $this->baseUrl = config('paystack.base_url', 'https://api.paystack.co');
         $this->secretKey = config('paystack.secret_key');
-        $this->platformSubaccount = config('paystack.platform_subaccount', 'ACCT_32iz48sbi1fshex');
+        // Pick the platform commission subaccount that matches the active key mode, so the
+        // live subaccount is used with live keys and the test one with test keys.
+        $isLive = str_starts_with((string) $this->secretKey, 'sk_live');
+        $this->platformSubaccount = $isLive
+            ? config('paystack.platform_subaccount_live')
+            : config('paystack.platform_subaccount_test');
         $this->platformPercentage = config('paystack.platform_percentage', 15);
     }
 
@@ -199,32 +204,53 @@ class PaystackService
     }
 
     /**
-     * Initialize payment with transaction split
-     * 85% to professional, 15% to platform
+     * Initialize payment with a Paystack dynamic split.
+     *
+     * The amount is split across TWO subaccounts so that NOTHING settles in the main
+     * Paystack account: the professional keeps (100 - platformPercentage)%, and the
+     * platform's commission goes to its own subaccount (config paystack.platform_subaccount).
+     * Because the two shares sum to 100%, the main account receives 0.
+     *
+     * Paystack's processing fee is borne by the platform subaccount (bearer_type=subaccount),
+     * so the professional receives a clean share. To have both parties share the fee instead,
+     * set bearer_type to 'all-proportional' and drop 'bearer_subaccount'.
      */
     public function initializePayment(
         float $amount,
         string $professionalSubaccount,
         string $email,
         string $reference,
-        array $metadata = []
+        array $metadata = [],
+        ?string $callbackUrl = null
     ): ?array {
         try {
-            // Calculate splits: 85% professional, 15% platform
-            $professionalShare = round($amount * 0.85);
-            $platformShare = round($amount * 0.15);
+            $platformShare = $this->platformPercentage;          // e.g. 15
+            $professionalShare = 100 - $this->platformPercentage; // e.g. 85
+
+            $payload = [
+                'email' => $email,
+                'amount' => (int) round($amount * 100), // Paystack expects amount in kobo
+                'reference' => $reference,
+                'metadata' => $metadata,
+                'split' => [
+                    'type' => 'percentage',
+                    'bearer_type' => 'subaccount',
+                    'bearer_subaccount' => $this->platformSubaccount,
+                    'subaccounts' => [
+                        ['subaccount' => $professionalSubaccount, 'share' => $professionalShare],
+                        ['subaccount' => $this->platformSubaccount, 'share' => $platformShare],
+                    ],
+                ],
+            ];
+
+            if ($callbackUrl) {
+                $payload['callback_url'] = $callbackUrl;
+            }
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->secretKey,
                 'Content-Type' => 'application/json',
-            ])->post("{$this->baseUrl}/transaction/initialize", [
-                'email' => $email,
-                'amount' => $amount * 100, // Paystack expects amount in kobo
-                'reference' => $reference,
-                'subaccount' => $professionalSubaccount,
-                'transaction_charge' => $platformShare * 100, // Platform fee in kobo
-                'metadata' => $metadata,
-            ]);
+            ])->post("{$this->baseUrl}/transaction/initialize", $payload);
 
             if ($response->successful() && $response->json('status')) {
                 return $response->json('data');

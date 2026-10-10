@@ -30,6 +30,7 @@ class UpdateDoctorRequest extends FormRequest
             'signature' => 'sometimes|nullable|string|max:2048',
             'id_card' => 'sometimes|nullable|string|max:2048',
             'availability' => 'sometimes|nullable|boolean',
+            'hospital_id' => 'sometimes|nullable|integer|exists:hospitals,id',
         ];
     }
 }

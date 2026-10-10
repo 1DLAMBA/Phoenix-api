@@ -79,7 +79,9 @@ class NurseController extends Controller
 
     public function show(Nurse $nurse, $id)
     {
-        $nurse = Nurse::with('user')->findOrFail($id);
+        $nurse = Nurse::with(['user', 'bankAccount'])->findOrFail($id);
+        $nurse->consultation_fee = $nurse->bankAccount?->consultation_fee;
+        $nurse->unsetRelation('bankAccount');
         ProfessionalRegistration::appendFlagToNurse($nurse);
 
         return response()->json([

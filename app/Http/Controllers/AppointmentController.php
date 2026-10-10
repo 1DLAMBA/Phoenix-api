@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\BankAccount;
+use App\Models\Client;
 use App\Models\Notification;
+use Illuminate\Support\Facades\DB;
 use App\Events\NotificationSent;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\UpdateAppointmentRequest;
@@ -33,6 +36,12 @@ class AppointmentController extends Controller
      */
     public function delete($id)
     {
+        // Return the client's free-consultation credit if this was their free appointment.
+        $appointment = Appointment::find($id);
+        if ($appointment && $appointment->is_free_first) {
+            $this->releaseFreeConsultation($appointment);
+        }
+
         $delete = Appointment::where('id', $id)->delete();
         return response()->json([
             'message' => 'Appointments deleted successfully.',
@@ -190,6 +199,17 @@ class AppointmentController extends Controller
         }
 
         $appointment->status = $requestStatus;
+
+        // When the professional accepts, decide whether this consultation needs payment.
+        // If the professional has a consultation fee configured, the client must pay before
+        // consulting (pay-after-acceptance); otherwise the consultation stays free.
+        if (in_array(strtolower((string) $requestStatus), ['accepted', 'approved'], true)) {
+            $this->applyPaymentRequirement($appointment);
+        } elseif (in_array(strtolower((string) $requestStatus), ['declined', 'cancelled', 'canceled', 'pending'], true)) {
+            // Declining/cancelling a free first consultation returns the client's free credit.
+            $this->releaseFreeConsultation($appointment);
+        }
+
         $appointment->save();
 
         // Refresh the appointment to ensure we have the latest data
@@ -346,6 +366,109 @@ class AppointmentController extends Controller
         ]);
 
 
+    }
+
+    /**
+     * Snapshot the consultation fee and payment split onto the appointment when it is accepted.
+     *
+     * Leaves an already-paid appointment untouched. If the professional has no bank account /
+     * consultation fee configured, the consultation is marked "not_required" (free).
+     */
+    private function applyPaymentRequirement(Appointment $appointment): void
+    {
+        // Never re-price an appointment that has already been paid for.
+        if ($appointment->payment_status === 'paid') {
+            return;
+        }
+
+        $professional = $appointment->doctor ?? $appointment->otherProfessional ?? $appointment->nurse;
+
+        $bankAccount = $professional
+            ? BankAccount::where('professionable_id', $professional->id)
+                ->where('professionable_type', get_class($professional))
+                ->first()
+            : null;
+
+        $fee = $bankAccount ? (float) $bankAccount->consultation_fee : 0.0;
+
+        if (!$bankAccount || $fee <= 0) {
+            // Free consultation — no payment required.
+            $appointment->amount = null;
+            $appointment->platform_fee = null;
+            $appointment->professional_amount = null;
+            $appointment->payment_status = 'not_required';
+            return;
+        }
+
+        // First-consultation-free: if enabled and this client still has their one-time
+        // free credit, this otherwise-chargeable consultation is free (professional absorbs it).
+        if (config('consultation.first_free', true) && $this->consumeFreeConsultation($appointment)) {
+            $appointment->amount = 0;
+            $appointment->platform_fee = 0;
+            $appointment->professional_amount = 0;
+            $appointment->payment_status = 'not_required';
+            $appointment->is_free_first = true;
+            return;
+        }
+
+        $platformPercentage = (float) config('paystack.platform_percentage', 15);
+        $platformFee = round($fee * ($platformPercentage / 100), 2);
+
+        $appointment->amount = $fee;
+        $appointment->platform_fee = $platformFee;
+        $appointment->professional_amount = round($fee - $platformFee, 2);
+        // Only (re)set to unpaid if a prior payment isn't already in flight/succeeded.
+        if (!in_array($appointment->payment_status, ['pending', 'paid'], true)) {
+            $appointment->payment_status = 'unpaid';
+        }
+    }
+
+    /**
+     * Atomically consume the client's one-time free-consultation credit for this appointment.
+     * Returns true if the credit was granted to this appointment (so it should be free).
+     */
+    private function consumeFreeConsultation(Appointment $appointment): bool
+    {
+        if ($appointment->is_free_first) {
+            return true; // idempotent re-accept of an already-free appointment
+        }
+        if (!$appointment->client_id) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($appointment) {
+            $client = Client::where('id', $appointment->client_id)->lockForUpdate()->first();
+            if (!$client || $client->free_consultation_used) {
+                return false;
+            }
+            $client->free_consultation_used = true;
+            $client->free_consultation_used_at = now();
+            $client->free_consultation_appointment_id = $appointment->id;
+            $client->save();
+            return true;
+        });
+    }
+
+    /**
+     * Return a client's free-consultation credit if the free appointment is declined/cancelled,
+     * so a no-show professional doesn't cost the patient their freebie. Leaves the (unsaved)
+     * appointment's is_free_first cleared for the caller's save.
+     */
+    private function releaseFreeConsultation(Appointment $appointment): void
+    {
+        if (!$appointment->is_free_first || !$appointment->client_id) {
+            return;
+        }
+        DB::transaction(function () use ($appointment) {
+            $client = Client::where('id', $appointment->client_id)->lockForUpdate()->first();
+            if ($client && (int) $client->free_consultation_appointment_id === (int) $appointment->id) {
+                $client->free_consultation_used = false;
+                $client->free_consultation_used_at = null;
+                $client->free_consultation_appointment_id = null;
+                $client->save();
+            }
+        });
+        $appointment->is_free_first = false;
     }
 
     /**

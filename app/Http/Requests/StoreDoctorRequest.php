@@ -30,7 +30,8 @@ class StoreDoctorRequest extends FormRequest
         'degree_file'=>'',
         'signature'=>'',
         'id_card'=>'',
-        'availability'=>'sometimes|boolean'
+        'availability'=>'sometimes|boolean',
+        'hospital_id'=>'sometimes|nullable|integer|exists:hospitals,id'
         ];
     }
 }

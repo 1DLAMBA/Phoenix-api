@@ -7,7 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Support\ProfessionalRegistration;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use App\Mail\OtpVerificationMail;
+use App\Mail\VerifyEmailMail;
 use App\Mail\WelcomeMail;
 use Carbon\Carbon;
 
@@ -50,10 +52,10 @@ class UserController extends Controller
             // Save the user to the database
             $user->save();
             
-            // Generate and send OTP for professionals (doctor, nurse, other_professional)
+            // Send an email verification link for professionals (doctor, nurse, other_professional)
             $professionalTypes = ['doctor', 'nurse', 'other_professional'];
             if (in_array($validate['user_type'], $professionalTypes)) {
-                $this->generateAndSendOtp($user);
+                $this->generateAndSendVerificationLink($user);
             } else {
                 // No OTP required — sign-up is complete; send welcome email
                 try {
@@ -186,26 +188,33 @@ class UserController extends Controller
     }
 
     /**
-     * Generate and send OTP to user's email
+     * Generate a verification token and email the user a verification link.
      */
-    private function generateAndSendOtp(User $user)
+    private function generateAndSendVerificationLink(User $user)
     {
-        // Generate 4-digit OTP
-        $otp = str_pad((string)rand(0, 9999), 4, '0', STR_PAD_LEFT);
-        
-        // Set OTP expiration (15 minutes from now)
-        $expiresAt = Carbon::now()->addMinutes(15);
-        
-        // Save OTP to user
-        $user->email_verification_otp = $otp;
-        $user->otp_expires_at = $expiresAt;
+        // Secure, single-use, unguessable token.
+        $token = Str::random(64);
+
+        // Link is valid for 60 minutes (reuses the otp_expires_at column).
+        $user->email_verification_token = $token;
+        $user->otp_expires_at = Carbon::now()->addMinutes(60);
+        // Clear any legacy OTP so only the link works.
+        $user->email_verification_otp = null;
         $user->save();
-        
-        // Send OTP email
+
+        $frontendUrl = rtrim(config('app.frontend_url'), '/');
+        $verificationUrl = $frontendUrl . '/verify-email?token=' . $token;
+
+        // In local/dev, always record the link so testing never depends on email
+        // delivery (Brevo/DNS can be flaky, and link emails often land in spam).
+        if (!app()->environment('production')) {
+            Log::info('Email verification link for ' . $user->email . ': ' . $verificationUrl);
+        }
+
         try {
-            Mail::to($user->email)->send(new OtpVerificationMail($user, $otp));
+            Mail::to($user->email)->send(new VerifyEmailMail($user, $verificationUrl));
         } catch (\Exception $e) {
-            Log::error('Failed to send OTP email: ' . $e->getMessage());
+            Log::error('Failed to send verification email: ' . $e->getMessage());
         }
     }
 
@@ -265,7 +274,63 @@ class UserController extends Controller
     }
 
     /**
-     * Regenerate and resend OTP
+     * Verify email from the link the user clicked (token-based).
+     */
+    public function verifyEmail(Request $request)
+    {
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        $user = User::where('email_verification_token', $request->token)->first();
+
+        if (!$user) {
+            return response()->json([
+                'error' => 'This verification link is invalid.',
+            ], 400);
+        }
+
+        // Already verified — treat as success (idempotent for double clicks).
+        if ($user->email_verified_at) {
+            return response()->json([
+                'success' => 'Email already verified',
+                'user' => $this->userWithFlags($user->load(['doctors', 'nurses', 'otherProfessionals', 'clients'])),
+            ]);
+        }
+
+        if ($user->otp_expires_at && Carbon::now()->gt($user->otp_expires_at)) {
+            return response()->json([
+                'error' => 'This verification link has expired. Please request a new one.',
+                'expired' => true,
+                'user_id' => $user->id,
+            ], 400);
+        }
+
+        $user->email_verified_at = Carbon::now();
+        $user->email_verification_token = null;
+        $user->email_verification_otp = null;
+        $user->otp_expires_at = null;
+        $user->save();
+
+        ProfessionalRegistration::ensureStubForVerifiedProfessional($user);
+        $user->refresh();
+        $user->load(['doctors', 'nurses', 'otherProfessionals', 'clients']);
+
+        // Sign-up is complete; send welcome email
+        try {
+            Mail::to($user->email)->send(new WelcomeMail($user));
+        } catch (\Exception $e) {
+            Log::error('Failed to send welcome email: ' . $e->getMessage());
+        }
+
+        return response()->json([
+            'success' => 'Email verified successfully',
+            'user' => $this->userWithFlags($user),
+        ]);
+    }
+
+    /**
+     * Resend the email verification link.
      */
     public function regenerateOtp(Request $request)
     {
@@ -274,7 +339,7 @@ class UserController extends Controller
         ]);
 
         $user = User::find($request->user_id);
-        
+
         if (!$user) {
             return response()->json([
                 'error' => 'User not found'
@@ -288,11 +353,11 @@ class UserController extends Controller
             ], 400);
         }
 
-        // Generate and send new OTP
-        $this->generateAndSendOtp($user);
+        // Generate and send a fresh verification link
+        $this->generateAndSendVerificationLink($user);
 
         return response()->json([
-            'success' => 'New OTP has been sent to your email'
+            'success' => 'A new verification link has been sent to your email'
         ]);
     }
 }
