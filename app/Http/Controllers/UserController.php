@@ -120,7 +120,7 @@ class UserController extends Controller
             ]);
         }
 
-        return response($body = 'invalid credentials', $status = 400, $headers = ['error']);
+        return response()->json(['error' => 'Invalid email or password'], 400);
     }
 
     /**
