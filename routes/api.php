@@ -55,7 +55,11 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 
 Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
     Route::get('/me/{id}', [AdminController::class, 'show']);
-    Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users', [UserController::class, 'adminIndex']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);        // deactivate (soft delete)
+    Route::post('/users/{id}/restore', [UserController::class, 'restore']);  // reactivate
+    Route::post('/broadcast', [UserController::class, 'broadcast']);         // email selected users
+    Route::post('/broadcast/preview', [UserController::class, 'broadcastPreview']);
     Route::get('/hospitals', [HospitalController::class, 'adminIndex']);
     Route::post('/hospitals/{id}/approve', [HospitalController::class, 'approve']);
     Route::post('/hospitals/{id}/reject', [HospitalController::class, 'reject']);
@@ -124,6 +128,9 @@ Route::get('/nurse/user/get/{id}', [NurseController::class, 'getNurseByUser']);
 
 // *****PROFESSIONALS (unified staff directory)*****
 Route::get('/professionals/get', [ProfessionalController::class, 'index']);
+// Public shareable profile by vanity slug (no auth) — phoenix.com/<slug>
+Route::get('/professional/public/{slug}', [ProfessionalController::class, 'publicProfile']);
+Route::get('/professional/public/{slug}/share-image', [ProfessionalController::class, 'shareImage']);
 
 // *****OTHER_PROFESSIONAL*****
 Route::post('/other-professional/create', [OtherProfessionalController::class, 'create']);
