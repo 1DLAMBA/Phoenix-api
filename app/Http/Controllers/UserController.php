@@ -51,10 +51,14 @@ class UserController extends Controller
             $user = User::create($validate);
             // Save the user to the database
             $user->save();
-            
+
             // Send an email verification link for professionals (doctor, nurse, other_professional)
             $professionalTypes = ['doctor', 'nurse', 'other_professional'];
             if (in_array($validate['user_type'], $professionalTypes)) {
+                // Give professionals a shareable vanity slug (phoenix.com/<slug>).
+                $user->slug = User::generateSlug($user->name);
+                $user->save();
+
                 $this->generateAndSendVerificationLink($user);
             } else {
                 // No OTP required — sign-up is complete; send welcome email
@@ -116,7 +120,7 @@ class UserController extends Controller
             ]);
         }
 
-        return response($body = 'invalid credentials', $status = 400, $headers = ['error']);
+        return response()->json(['error' => 'Invalid email or password'], 400);
     }
 
     /**
@@ -184,7 +188,111 @@ class UserController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        $user = User::find($id);
+        if (!$user) {
+            return response()->json(['error' => 'User not found'], 404);
+        }
+        // Revoke active sessions, then soft-delete (deactivate — reversible).
+        try { $user->tokens()->delete(); } catch (\Exception $e) {}
+        $user->delete();
+
+        return response()->json(['success' => 'User deactivated']);
+    }
+
+    /**
+     * Reactivate a previously deactivated (soft-deleted) user.
+     */
+    public function restore(string $id)
+    {
+        $user = User::withTrashed()->find($id);
+        if (!$user) {
+            return response()->json(['error' => 'User not found'], 404);
+        }
+        $user->restore();
+
+        return response()->json(['success' => 'User reactivated']);
+    }
+
+    /**
+     * Admin listing — includes deactivated users so they can be reactivated.
+     */
+    public function adminIndex()
+    {
+        $users = User::withTrashed()
+            ->with('doctors', 'nurses', 'clients', 'otherProfessionals')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['users' => $users]);
+    }
+
+    /**
+     * Send a broadcast email to a selected set of users.
+     * Expects: subject, message, user_ids[]. Sends synchronously (chunked).
+     */
+    private const BROADCAST_RULES = [
+        'subject' => 'required|string|max:255',
+        'message' => 'required|string|max:20000',
+        'headline' => 'nullable|string|max:150',
+        'banner_url' => 'nullable|url:http,https|max:500',
+        'cta_label' => 'nullable|string|max:40|required_with:cta_url',
+        'cta_url' => 'nullable|url:http,https|max:500|required_with:cta_label',
+    ];
+
+    private function broadcastOptions(array $validated): array
+    {
+        return [
+            'headline' => $validated['headline'] ?? null,
+            'banner_url' => $validated['banner_url'] ?? null,
+            'cta_label' => $validated['cta_label'] ?? null,
+            'cta_url' => $validated['cta_url'] ?? null,
+        ];
+    }
+
+    public function broadcast(Request $request)
+    {
+        $validated = $request->validate(self::BROADCAST_RULES + [
+            'user_ids' => 'required|array|min:1',
+            'user_ids.*' => 'integer',
+        ]);
+        $options = $this->broadcastOptions($validated);
+
+        $sent = 0;
+        $failed = 0;
+
+        User::whereIn('id', $validated['user_ids'])
+            ->whereNotNull('email')
+            ->chunk(100, function ($users) use ($validated, $options, &$sent, &$failed) {
+                foreach ($users as $user) {
+                    try {
+                        Mail::to($user->email)->send(
+                            new \App\Mail\BroadcastMail($user, $validated['subject'], $validated['message'], $options)
+                        );
+                        $sent++;
+                    } catch (\Exception $e) {
+                        $failed++;
+                        Log::error('Broadcast email failed for ' . $user->email . ': ' . $e->getMessage());
+                    }
+                }
+            });
+
+        return response()->json([
+            'success' => 'Broadcast complete',
+            'sent' => $sent,
+            'failed' => $failed,
+        ]);
+    }
+
+    /**
+     * Render the newsletter exactly as recipients will see it, using the admin's own name.
+     */
+    public function broadcastPreview(Request $request)
+    {
+        $validated = $request->validate(self::BROADCAST_RULES);
+        $viewer = (new User())->forceFill(['name' => $request->user()->name ?? 'there']);
+        $mail = new \App\Mail\BroadcastMail($viewer, $validated['subject'], $validated['message'], $this->broadcastOptions($validated));
+
+        return response()->json(['html' => view('emails.broadcast', $mail->viewData())->render()]);
     }
 
     /**
