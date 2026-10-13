@@ -35,4 +35,12 @@ return [
         'api_key' => env('BREVO_API_KEY'),
     ],
 
+    // AI chat. Read through config() rather than env() so these survive
+    // `php artisan config:cache`, which makes env() return null in production.
+    'openrouter' => [
+        'key' => env('OPENROUTER_API_KEY', env('HF_TOKEN', env('GROQ_API_KEY'))),
+        'url' => env('OPENROUTER_URL', 'https://openrouter.ai/api/v1/chat/completions'),
+        'model' => env('OPENROUTER_DEFAULT_MODEL', 'deepseek/deepseek-chat-v3.1'),
+    ],
+
 ];

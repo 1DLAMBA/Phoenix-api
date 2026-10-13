@@ -144,10 +144,18 @@ class AiChatController extends Controller
             $contextTokens = TokenCounter::estimateMessages($history);
             $maxTokens = TokenCounter::getRecommendedMaxTokens($contextTokens);
 
-            // Call OpenRouter (DeepSeek model) for chat completions
-            // Set OPENROUTER_API_KEY in your .env, fallback on HG_TOKEN/GROQ_API_KEY for compatibility.
-            $token = env('OPENROUTER_API_KEY', env('HF_TOKEN', env('GROQ_API_KEY')));
-            $endpoint = env('OPENROUTER_URL', 'https://openrouter.ai/v1/chat/completions');
+            // Call OpenRouter (DeepSeek model) for chat completions.
+            // config() not env(): env() returns null once the config is cached.
+            $token = config('services.openrouter.key');
+            $endpoint = config('services.openrouter.url');
+
+            if (empty($token)) {
+                Log::error('OpenRouter API key missing. Set OPENROUTER_API_KEY, then run php artisan config:clear.');
+
+                return response()->json([
+                    'error' => 'AI service is not configured',
+                ], 503);
+            }
 
             $requestedModel = $this->resolveModel($convo->model);
             $response = Http::timeout(30)
@@ -163,7 +171,7 @@ class AiChatController extends Controller
                 $json = $response->json() ?: [];
                 $errorCode = data_get($json, 'error.code', '');
                 $errorMsg = data_get($json, 'error.message', '');
-                $retryModel = env('OPENROUTER_DEFAULT_MODEL', 'deepseek/deepseek');
+                $retryModel = config('services.openrouter.model');
 
                 if (in_array($errorCode, ['model_not_supported', 'model_not_found']) || str_contains($errorMsg, 'model')) {
                     if ($requestedModel !== $retryModel) {
@@ -282,7 +290,7 @@ class AiChatController extends Controller
 
     private function resolveModel(?string $name): string
     {
-        $defaultModel = env('OPENROUTER_DEFAULT_MODEL', 'deepseek/deepseek-chat-v3.1');
+        $defaultModel = config('services.openrouter.model');
         $preferred = trim(strtolower((string)($name ?: '')));
 
         $map = [
