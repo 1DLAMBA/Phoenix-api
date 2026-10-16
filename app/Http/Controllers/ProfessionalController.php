@@ -7,6 +7,7 @@ use App\Models\Nurse;
 use App\Models\OtherProfessional;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
+use App\Support\ShareCardRenderer;
 use App\Support\ProfessionalListingQuery;
 use App\Support\ProfessionalRegistration;
 
@@ -92,6 +93,56 @@ class ProfessionalController extends Controller
 
         return response($jpeg, 200, [
             'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'public, max-age=3600',
+        ]);
+    }
+
+    /**
+     * Downloadable, shareable profile card (portrait 1080x1350) — the "navy hero"
+     * design with photo, name, specialty and a QR code to the public profile.
+     * No fee/pricing on the card: it's an identity card, not a quote, and a
+     * shared image would go stale if the fee changed later.
+     * Public and keyed by slug, so a visitor shares the same card as the owner.
+     */
+    public function card(string $slug)
+    {
+        $user = User::where('slug', $slug)
+            ->whereIn('user_type', ['doctor', 'nurse', 'other_professional'])
+            ->first();
+        if (!$user) {
+            return response()->json(['error' => 'Profile not found'], 404);
+        }
+
+        $pro = match ($user->user_type) {
+            'doctor' => Doctor::with('hospital')->where('user_id', $user->id)->first(),
+            'nurse'  => Nurse::with('hospital')->where('user_id', $user->id)->first(),
+            default  => OtherProfessional::with('hospital')->where('user_id', $user->id)->first(),
+        };
+        if (!$pro) {
+            return response()->json(['error' => 'Profile not found'], 404);
+        }
+
+        $subtitle = $user->user_type === 'other_professional'
+            ? ($pro->professional_type ?? $pro->specialization ?? 'Specialist')
+            : ($pro->specialization ?? ucfirst($user->user_type));
+
+        $photoPath = $user->passport ? 'public/files/' . basename($user->passport) : null;
+        $photo = ($photoPath && Storage::disk('local')->exists($photoPath))
+            ? Storage::disk('local')->get($photoPath)
+            : null;
+
+        $png = ShareCardRenderer::render([
+            'name'      => $user->name,
+            'subtitle'  => $subtitle,
+            'hospital'  => $pro->hospital ? $pro->hospital->name : null,
+            'verified'  => (bool) \App\Support\ProfessionalRegistration::registrationComplete($user),
+            'slug'      => $user->slug,
+            'photo'     => $photo,
+        ]);
+
+        return response($png, 200, [
+            'Content-Type' => 'image/png',
+            'Content-Disposition' => 'inline; filename="phoenix-' . $user->slug . '.png"',
             'Cache-Control' => 'public, max-age=3600',
         ]);
     }
