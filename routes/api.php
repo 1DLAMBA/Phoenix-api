@@ -131,6 +131,7 @@ Route::get('/professionals/get', [ProfessionalController::class, 'index']);
 // Public shareable profile by vanity slug (no auth) — phoenix.com/<slug>
 Route::get('/professional/public/{slug}', [ProfessionalController::class, 'publicProfile']);
 Route::get('/professional/public/{slug}/share-image', [ProfessionalController::class, 'shareImage']);
+Route::get('/professional/public/{slug}/card', [ProfessionalController::class, 'card']);
 
 // *****OTHER_PROFESSIONAL*****
 Route::post('/other-professional/create', [OtherProfessionalController::class, 'create']);
